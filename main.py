@@ -1,16 +1,14 @@
 import sys
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
-    QTextEdit, QLabel, QMessageBox, QHBoxLayout, QFileDialog
+    QLabel, QMessageBox, QHBoxLayout, QFileDialog,
+    QTableWidget, QTableWidgetItem, QCheckBox
 )
 from openpyxl import Workbook
 from avito_parser import AvitoParser
-from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtCore import QMetaObject, Qt
-from selenium.common.exceptions import TimeoutException, WebDriverException
-
-
+from selenium.common.exceptions import TimeoutException
+from PyQt5.QtWidgets import QHeaderView
 
 # =========================
 # Worker (ФОН)
@@ -18,18 +16,14 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 class ParserWorker(QThread):
     log = pyqtSignal(str)
     captcha_detected = pyqtSignal()
-    finished = pyqtSignal(object)  # Workbook
+    finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
     def __init__(self, urls):
         super().__init__()
         self.urls = urls
+        self.parser = None
         self.success_count = 0
-
-    @pyqtSlot()
-    def continue_after_captcha(self):
-        if self.parser:
-            self.parser.continue_after_captcha()
 
     def run(self):
         try:
@@ -55,15 +49,11 @@ class ParserWorker(QThread):
                     data = self.parser.parse_ad(url)
 
                     if data.get("page_not_found"):
-                        self.log.emit(
-                            f"❌ [{i}] Страница не существует: {url}"
-                        )
+                        self.log.emit(f"❌ [{i}] Страница не существует")
                         continue
 
                 except TimeoutException:
-                    self.log.emit(
-                        f"❌ [{i}] Таймаут загрузки страницы: {url}"
-                    )
+                    self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
                     continue
 
                 price = data.get("price")
@@ -85,29 +75,25 @@ class ParserWorker(QThread):
                     area,
                     data.get("description"),
                 ])
+
                 self.success_count += 1
 
             self.parser.close()
+
             if self.success_count == 0:
                 self.finished.emit(None)
             else:
                 self.finished.emit(wb)
+
         except Exception as e:
             self.error.emit(str(e))
-
 
     def on_captcha(self):
         self.captcha_detected.emit()
 
-    def continue_parsing(self):
-        if self.worker:
-            QMetaObject.invokeMethod(
-                self.worker,
-                "continue_after_captcha",
-                Qt.QueuedConnection
-            )
-            self.continue_btn.setEnabled(False)
-            self.log_msg("▶ Продолжение парсинга")
+    def continue_after_captcha(self):
+        if self.parser:
+            self.parser.continue_after_captcha()
 
 
 # =========================
@@ -116,58 +102,92 @@ class ParserWorker(QThread):
 class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Avito Parser")
-        self.resize(800, 600)
-
+        self.setWindowTitle("Avito Parser — Аналоги")
+        self.resize(900, 600)
 
         layout = QVBoxLayout(self)
 
-        self.urls_input = QTextEdit()
-        self.urls_input.setPlaceholderText("Каждая ссылка с новой строки")
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels([
+            "Ссылка",
+            "Выбран как аналог"
+        ])
 
+        header = self.table.horizontalHeader()
+
+        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Ссылка — растягивается
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Аналог — по тексту
+
+        header.setStretchLastSection(False)
+
+        self.add_btn = QPushButton("➕ Добавить ссылку")
         self.start_btn = QPushButton("▶ Запустить парсинг")
         self.continue_btn = QPushButton("⏯ Продолжить парсинг")
         self.continue_btn.setEnabled(False)
 
-        self.log = QTextEdit()
-        self.log.setReadOnly(True)
+        self.log = QTableWidget()
+        self.log.setColumnCount(1)
+        self.log.setHorizontalHeaderLabels(["Лог"])
+        self.log.horizontalHeader().setStretchLastSection(True)
+        self.log.setRowCount(0)
 
         btns = QHBoxLayout()
+        btns.addWidget(self.add_btn)
         btns.addWidget(self.start_btn)
         btns.addWidget(self.continue_btn)
 
-        layout.addWidget(QLabel("Ссылки:"))
-        layout.addWidget(self.urls_input)
+        layout.addWidget(QLabel("Ссылки на объявления Авито:"))
+        layout.addWidget(self.table)
         layout.addLayout(btns)
         layout.addWidget(QLabel("Лог:"))
         layout.addWidget(self.log)
 
+        self.add_btn.clicked.connect(self.add_row)
         self.start_btn.clicked.connect(self.start_parsing)
         self.continue_btn.clicked.connect(self.continue_parsing)
 
         self.worker = None
 
+        for _ in range(5):
+            self.add_row()
+
+    # ---------- UI helpers ----------
+    def add_row(self):
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        self.table.setItem(row, 0, QTableWidgetItem(""))
+
+        checkbox = QCheckBox()
+
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.addWidget(checkbox)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.table.setCellWidget(row, 1, container)
+
     def log_msg(self, text):
-        self.log.append(text)
+        row = self.log.rowCount()
+        self.log.insertRow(row)
+        self.log.setItem(row, 0, QTableWidgetItem(text))
+        self.log.scrollToBottom()
 
-    def continue_after_captcha(self):
-        if self.parser:
-            self.parser.continue_after_captcha()
-
-    def continue_parsing(self):
-        if self.worker:
-            self.worker.continue_after_captcha()
-            self.continue_btn.setEnabled(False)
-            self.log_msg("▶ Парсинг продолжен")
-
+    # ---------- Parsing ----------
     def start_parsing(self):
-        urls = [u.strip() for u in self.urls_input.toPlainText().splitlines() if u.strip()]
+        urls = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.text().strip():
+                urls.append(item.text().strip())
+
         if not urls:
             QMessageBox.warning(self, "Ошибка", "Добавьте хотя бы одну ссылку")
             return
 
         self.start_btn.setEnabled(False)
-        self.log.clear()
+        self.log.setRowCount(0)
 
         self.worker = ParserWorker(urls)
         self.worker.log.connect(self.log_msg)
@@ -187,8 +207,22 @@ class AvitoApp(QWidget):
             "затем нажмите «Продолжить парсинг»"
         )
 
+    def continue_parsing(self):
+        if self.worker:
+            QMetaObject.invokeMethod(
+                self.worker,
+                "continue_after_captcha",
+                Qt.QueuedConnection
+            )
+            self.continue_btn.setEnabled(False)
+            self.log_msg("▶ Парсинг продолжен")
+
     def on_finished(self, workbook):
         self.start_btn.setEnabled(True)
+
+        if workbook is None:
+            QMessageBox.information(self, "Готово", "Нет успешно обработанных объявлений")
+            return
 
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -204,8 +238,6 @@ class AvitoApp(QWidget):
         try:
             workbook.save(path)
             QMessageBox.information(self, "Готово", "Файл успешно сохранён")
-        except PermissionError:
-            QMessageBox.warning(self, "Ошибка", "Файл открыт в Excel")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
 
