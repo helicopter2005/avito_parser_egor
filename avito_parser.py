@@ -21,6 +21,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.os_manager import ChromeType
 
 
 def resource_path(relative_path):
@@ -40,16 +41,19 @@ class AvitoParser:
         self.slow_delay = 0.4
         self.on_captcha = on_captcha
         self._wait_for_user = False
+        self.browser_type = None
 
         if download_images:
             self.images_dir.mkdir(parents=True, exist_ok=True)
 
     def _setup_driver(self):
+        """Настройка драйвера с fallback: Yandex → Chrome"""
         options = Options()
 
         if self.headless:
             options.add_argument("--headless=new")
 
+        # Общие параметры для обоих браузеров
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--disable-infobars")
         options.add_argument("--disable-dev-shm-usage")
@@ -60,15 +64,41 @@ class AvitoParser:
         options.add_argument("--lang=ru-RU")
         options.add_argument('--disable-notifications')
         options.add_argument('--disable-extensions')
-        options.add_argument('--disable-extensions')
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
+        options.add_argument(
+            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
 
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=options)
+        # Попытка 1: Yandex Browser с yandexdriver.exe
+        yandex_driver_path = "yandexdriver.exe"  # или полный путь: "C:/drivers/yandexdriver.exe"
 
+        if os.path.exists(yandex_driver_path):
+            try:
+                print("🔍 Найден yandexdriver.exe, запускаю Yandex Browser...")
+                service = Service(yandex_driver_path)
+                self.driver = webdriver.Chrome(service=service, options=options)
+                self.browser_type = "yandex"
+                print("✓ Yandex Browser успешно запущен")
+            except Exception as e:
+                print(f"✗ Ошибка запуска Yandex Browser: {e}")
+                print("↻ Переключаюсь на Chrome...")
+                self.driver = None
+        else:
+            print(f"ℹ yandexdriver.exe не найден по пути: {yandex_driver_path}")
+            print("↻ Переключаюсь на Chrome...")
+
+        # Попытка 2: Chrome (если Yandex не запустился)
+        if self.driver is None:
+            try:
+                print("🔍 Запускаю Chrome...")
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=options)
+                self.browser_type = "chrome"
+                print("✓ Chrome успешно запущен")
+            except Exception as e:
+                raise Exception(f"Не удалось запустить ни Yandex, ни Chrome: {e}")
+
+        # Применяем антидетект скрипты
         self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": """
                 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
