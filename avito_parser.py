@@ -109,13 +109,134 @@ class AvitoParser:
 
         return self.driver
 
-    def _wait_for_page_load(self, timeout=15):
+    def _wait_for_page_load(self, timeout=10):
+        """Ожидание базовой загрузки (не полной)"""
         try:
+            # Ждём только interactive, не complete
             WebDriverWait(self.driver, timeout).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
+                lambda d: d.execute_script("return document.readyState") in ["interactive", "complete"]
             )
+            time.sleep(1)  # Короткая пауза для рендеринга
         except TimeoutException:
-            print("Таймаут ожидания загрузки страницы")
+            print("  Таймаут базовой загрузки")
+
+    def _get_price_history_and_screenshot(self, address_ad):
+        """Получение истории цен + скриншот с открытым tooltip"""
+        price_history = []
+        screenshot_path = None
+
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains
+
+            hover_element = None
+            elements = self.driver.find_elements(By.XPATH,
+                                                 "//*[contains(text(), 'История цены')]")
+            for el in elements:
+                try:
+                    if el.is_displayed() and el.size['width'] > 0:
+                        hover_element = el
+                        break
+                except:
+                    continue
+
+            if hover_element:
+                self._slow_pause("Навожу на 'История цены'...")
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", hover_element)
+                time.sleep(0.3)
+
+                actions = ActionChains(self.driver)
+                actions.move_to_element(hover_element).perform()
+                time.sleep(1.5)
+
+                # Делаем скриншот с открытым tooltip
+                ad_folder = self.images_dir / str(address_ad)
+                ad_folder.mkdir(parents=True, exist_ok=True)
+                self.driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(0.3)
+                top_path = ad_folder / "история цены.png"
+                self.driver.save_screenshot(str(top_path))
+                screenshot_path = str(top_path)
+                print(f"  ✓ Скриншот (цена+история): {top_path.name}")
+
+                # Парсим tooltip
+                tooltip_selectors = [
+                    "[class*='tooltip']", "[class*='Tooltip']", "[class*='popup']",
+                    "[class*='Popup']", "[role='tooltip']", "[class*='popper']"
+                ]
+
+                tooltip = None
+                for selector in tooltip_selectors:
+                    try:
+                        tooltips = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        for t in tooltips:
+                            if t.is_displayed() and '₽' in t.text and len(t.text) > 10:
+                                tooltip = t
+                                break
+                    except:
+                        continue
+                    if tooltip:
+                        break
+
+                if tooltip:
+                    text = tooltip.text.replace('\xa0', ' ')
+                    text = re.sub(r'\s+', ' ', text).strip()
+                    tokens = text.split(' ')
+
+                    i = 0
+                    while i < len(tokens):
+                        if (i + 2 < len(tokens) and re.match(r'\d{1,2}', tokens[i])
+                                and re.match(r'[А-Яа-я]+', tokens[i + 1])
+                                and re.match(r'\d{4}', tokens[i + 2])):
+                            date = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
+                            i += 3
+
+                            num_parts = []
+                            while i < len(tokens) and re.match(r'\d+', tokens[i]):
+                                num_parts.append(tokens[i])
+                                i += 1
+
+                            if i < len(tokens) and tokens[i] == '₽':
+                                price = int(''.join(num_parts))
+                                price_history.append({"date": date, "price": price})
+                                i += 1
+
+                            while i < len(tokens):
+                                if tokens[i].isdigit() and i + 1 < len(tokens) and tokens[i + 1] == '₽':
+                                    i += 2
+                                    break
+                                if tokens[i] in ('Публикация', 'Следить'):
+                                    break
+                                i += 1
+                            continue
+                        i += 1
+
+                    print(f"  ✓ История цен: {len(price_history)} записей")
+
+                # Убираем курсор
+                actions.move_by_offset(300, 300).perform()
+                time.sleep(0.3)
+            else:
+                print("  ℹ Элемент 'История цены' не найден")
+        except Exception as e:
+            print(f"  ✗ Ошибка истории цен: {e}")
+
+        return price_history, screenshot_path
+
+    def _take_bottom_screenshot(self, address_ad):
+        """Скриншот нижней части без tooltip"""
+        try:
+            ad_folder = self.images_dir / str(address_ad)
+            ad_folder.mkdir(parents=True, exist_ok=True)
+
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(0.5)
+            bottom_path = ad_folder / "скриншот с датой публикации.png"
+            self.driver.save_screenshot(str(bottom_path))
+            print(f"  ✓ Скриншот (низ): {bottom_path.name}")
+            return str(bottom_path)
+        except Exception as e:
+            print(f"  ✗ Ошибка скриншота: {e}")
+            return None
 
     def continue_after_captcha(self):
         self._wait_for_user = False
@@ -125,188 +246,6 @@ class AvitoParser:
             if message:
                 print(f"  [SLOW MODE] {message}")
             time.sleep(self.slow_delay)
-
-    def _take_screenshots(self, address_ad):
-        """Сохранение скриншотов объявления (верх и низ страницы)"""
-        screenshots = {}
-        try:
-            ad_folder = self.images_dir / str(address_ad)
-            ad_folder.mkdir(parents=True, exist_ok=True)
-
-            # Скриншот верхней части (основная информация)
-            self.driver.execute_script("window.scrollTo(0, 0);")
-            top_path = ad_folder / "скриншот с ценой.png"
-            self.driver.save_screenshot(str(top_path))
-            screenshots["top"] = str(top_path)
-            print(f"  ✓ Скриншот (верх): {top_path.name}")
-
-            # Скриншот нижней части (дата, продавец)
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            bottom_path = ad_folder / "скнриншот с датой публикации.png"
-            self.driver.save_screenshot(str(bottom_path))
-            screenshots["bottom"] = str(bottom_path)
-            print(f"  ✓ Скриншот (низ): {bottom_path.name}")
-
-
-            return screenshots
-        except Exception as e:
-            print(f"  ✗ Ошибка скриншотов: {e}")
-            return screenshots
-
-    def _get_price_history(self):
-        """Получение истории изменения цен (hover-элемент)"""
-        price_history = []
-
-        try:
-            from selenium.webdriver.common.action_chains import ActionChains
-
-            hover_element = None
-
-            # Ищем по тексту "История цены"
-            try:
-                elements = self.driver.find_elements(By.XPATH,
-                    "//*[contains(text(), 'История цены') or contains(text(), 'история цены')]")
-                for el in elements:
-                    if el.is_displayed():
-                        hover_element = el
-                        print(f"  [DEBUG] Найден элемент: {el.tag_name}, текст: {el.text[:50]}")
-                        break
-            except:
-                pass
-
-            # Пробуем найти по data-marker
-            if not hover_element:
-                selectors = [
-                    "[data-marker='item-view/price-history']",
-                    "[data-marker*='price-history']",
-                    "[class*='price-history']",
-                    "[class*='priceHistory']"
-                ]
-                for selector in selectors:
-                    try:
-                        hover_element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                        if hover_element.is_displayed():
-                            break
-                    except:
-                        continue
-
-            if hover_element:
-                self._slow_pause("Навожу на 'История цены'...")
-
-                # Скроллим к элементу
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", hover_element)
-
-                # Наводим курсор
-                actions = ActionChains(self.driver)
-                actions.move_to_element(hover_element).perform()
-                time.sleep(.4)  # Ждём появления tooltip
-
-                self._slow_pause("Ищу tooltip с историей...")
-
-                # Делаем скриншот для отладки
-                # self.driver.save_screenshot("debug_hover.png")
-
-                # Ищем появившийся tooltip
-                tooltip = None
-                tooltip_selectors = [
-                    "[class*='tooltip']",
-                    "[class*='Tooltip']",
-                    "[class*='popup']",
-                    "[class*='Popup']",
-                    "[class*='hint']",
-                    "[class*='Hint']",
-                    "[role='tooltip']",
-                    "[class*='floating']",
-                    "[class*='popper']",
-                    "[class*='Popper']",
-                    "div[style*='position: absolute']",
-                    "div[style*='position: fixed']"
-                ]
-
-                for selector in tooltip_selectors:
-                    try:
-                        tooltips = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        for t in tooltips:
-                            if t.is_displayed():
-                                text = t.text
-                                if '₽' in text and len(text) > 10:
-                                    tooltip = t
-                                    print(f"  [DEBUG] Найден tooltip: {text[:100]}...")
-                                    break
-                    except:
-                        continue
-                    if tooltip:
-                        break
-
-                if tooltip:
-                    tooltip_text = tooltip.text
-                    text = tooltip_text.replace('\xa0', ' ').replace(' ', ' ')
-                    text = re.sub(r'\s+', ' ', text).strip()
-
-                    tokens = text.split(' ')
-
-                    i = 0
-                    while i < len(tokens):
-                        # ищем дату: DD month YYYY
-                        if (
-                                i + 2 < len(tokens)
-                                and re.match(r'\d{1,2}', tokens[i])
-                                and re.match(r'[А-Яа-я]+', tokens[i + 1])
-                                and re.match(r'\d{4}', tokens[i + 2])
-                        ):
-                            date = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
-                            i += 3
-
-                            # ищем цену после даты
-                            while i < len(tokens):
-                                # цена всегда перед ₽
-                                # собираем число до символа ₽
-                                num_parts = []
-                                while i < len(tokens) and re.match(r'\d+', tokens[i]):
-                                    num_parts.append(tokens[i])
-                                    i += 1
-
-                                if i < len(tokens) and tokens[i] == '₽':
-                                    price = int(''.join(num_parts))
-
-                                    price_history.append({
-                                        "date": date,
-                                        "price": price
-                                    })
-                                    i += 2
-                                    break
-                                i += 1
-
-                            # пропускаем изменение цены (вторая ₽)
-                            while i < len(tokens):
-                                if tokens[i].isdigit() and i + 1 < len(tokens) and tokens[i + 1] == '₽':
-                                    i += 2
-                                    break
-                                if tokens[i] in ('Публикация', 'Следить'):
-                                    break
-                                i += 1
-
-                            continue
-
-                        i += 1
-
-                    print(f"  ✓ История цен: {len(price_history)} записей")
-                else:
-                    print("  ℹ Tooltip не появился")
-
-                # Убираем курсор
-                try:
-                    actions.move_by_offset(200, 200).perform()
-                except:
-                    pass
-                time.sleep(0.3)
-            else:
-                print("  ℹ Элемент 'История цены' не найден на странице")
-
-        except Exception as e:
-            print(f"  ✗ Ошибка получения истории цен: {e}")
-
-        return price_history
 
     def _extract_text(self, selectors, default=""):
         for selector in selectors:
@@ -484,9 +423,9 @@ class AvitoParser:
                 pass
         data["price_info"] = price_info
 
-        # История цен
-        print("  Получение истории цен...")
-        data["price_history"] = self._get_price_history()
+        # История цен + скриншот с tooltip
+        print("  Получение истории цен и скриншота...")
+        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'])
 
         data["address"] = self._extract_text([
             "[data-marker='delivery/location']",
@@ -520,9 +459,16 @@ class AvitoParser:
             "[class*='date-info']"
         ])
 
-        # Скриншоты
-        print("  Сохранение скриншотов...")
-        data["screenshots"] = self._take_screenshots(data['title'])
+        # Если в объявлении указана только цена за м2 в месяц
+        if "в месяц за м²" in data["price_text"]:
+            if area_match:
+                data["price"] = round(data["price"] * data["area_m2"], 1)
+            else:
+                data["price"] = "Введите стоимость аренды вручную"
+
+        # Нижний скриншот
+        bottom_screenshot = self._take_bottom_screenshot(data['title'])
+        data["screenshots"] = {"top": top_screenshot, "bottom": bottom_screenshot}
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
         print(f"  ✓ Цена: {data.get('price_text', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")
