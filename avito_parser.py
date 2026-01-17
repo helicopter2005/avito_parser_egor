@@ -27,7 +27,7 @@ from webdriver_manager.core.os_manager import ChromeType
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    return os.path.abspath(relative_path)
 
 class AvitoParser:
     """Парсер объявлений недвижимости Avito"""
@@ -68,9 +68,10 @@ class AvitoParser:
             "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
+        options.page_load_strategy = "eager"
 
         # Попытка 1: Yandex Browser с yandexdriver.exe
-        yandex_driver_path = "yandexdriver.exe"  # или полный путь: "C:/drivers/yandexdriver.exe"
+        yandex_driver_path = resource_path("yandexdriver.exe")  # или полный путь: "C:/drivers/yandexdriver.exe"
 
         if os.path.exists(yandex_driver_path):
             try:
@@ -109,14 +110,62 @@ class AvitoParser:
 
         return self.driver
 
-    def _wait_for_page_load(self, timeout=10):
-        """Ожидание базовой загрузки (не полной)"""
+    def _wait_for_page_load(self, timeout=60):
+        """Циклическая проверка tooltip каждые 3 секунды"""
+        max_attempts = 15
+
+        for attempt in range(1, max_attempts + 1):
+            print(f"  Попытка {attempt}/{max_attempts}: ждём 3 сек...")
+            time.sleep(1)
+
+
+
+            # Проверяем tooltip
+            try:
+                from selenium.webdriver.common.action_chains import ActionChains
+
+                elements = self.driver.find_elements(By.XPATH,
+                                                     "//*[contains(text(), 'История цены')]")
+
+                for el in elements:
+                    try:
+                        if el.is_displayed() and el.size['width'] > 0:
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                            time.sleep(0.3)
+
+                            actions = ActionChains(self.driver)
+                            actions.move_to_element(el).perform()
+                            time.sleep(1)
+
+                            # Ищем tooltip
+                            tooltips = self.driver.find_elements(By.CSS_SELECTOR,
+                                                                 "[class*='tooltip'], [class*='Tooltip'], [class*='popup'], [role='tooltip']")
+
+                            for t in tooltips:
+                                try:
+                                    if t.is_displayed() and '₽' in t.text:
+                                        print("  ✓ Tooltip найден, начинаем парсинг")
+                                        actions.move_by_offset(300, 300).perform()
+                                        return  # Успех!
+                                except:
+                                    continue
+
+                            actions.move_by_offset(300, 300).perform()
+                            print(f"  ⚠ Tooltip не появился (попытка {attempt})")
+                            break
+                    except:
+                        continue
+                else:
+                    print(f"  ⚠ Элемент 'История цены' не найден (попытка {attempt})")
+
+            except Exception as e:
+                print(f"  ⚠ Ошибка попытки {attempt}: {e}")
+
         try:
             # Ждём только interactive, не complete
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") in ["interactive", "complete"]
             )
-            time.sleep(1)  # Короткая пауза для рендеринга
         except TimeoutException:
             print("  Таймаут базовой загрузки")
 
@@ -230,7 +279,7 @@ class AvitoParser:
 
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(0.5)
-            bottom_path = ad_folder / "скриншот с датой публикации.png"
+            bottom_path = ad_folder / "дата публикации.png"
             self.driver.save_screenshot(str(bottom_path))
             print(f"  ✓ Скриншот (низ): {bottom_path.name}")
             return str(bottom_path)
@@ -323,7 +372,7 @@ class AvitoParser:
         ad_id = ad_id_match.group(1) if ad_id_match else hashlib.md5(url.encode()).hexdigest()[:10]
 
         self.driver.get(url)
-        self._wait_for_page_load()
+        time.sleep(2)
 
         # Проверяем капчу/блокировку по реальным признакам
         page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
@@ -363,7 +412,7 @@ class AvitoParser:
                 time.sleep(0.3)
 
             self._wait_for_page_load()
-
+        self._wait_for_page_load()
         data = {
             "id": ad_id,
             "url": url,

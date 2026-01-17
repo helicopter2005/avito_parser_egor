@@ -5,10 +5,14 @@ from PyQt5.QtWidgets import (
     QLabel, QMessageBox, QHBoxLayout, QFileDialog,
     QTableWidget, QTableWidgetItem, QCheckBox
 )
-from openpyxl import Workbook
-from avito_parser import AvitoParser
-from selenium.common.exceptions import TimeoutException
 from PyQt5.QtWidgets import QHeaderView
+from selenium.common.exceptions import TimeoutException
+
+from avito_parser import AvitoParser
+from excel_builder import build_excel
+from word_builder import build_word_with_screenshots
+from PyQt5.QtCore import pyqtSlot
+
 
 # =========================
 # Worker (ФОН)
@@ -16,14 +20,13 @@ from PyQt5.QtWidgets import QHeaderView
 class ParserWorker(QThread):
     log = pyqtSignal(str)
     captcha_detected = pyqtSignal()
-    finished = pyqtSignal(object)
+    finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
     def __init__(self, urls):
         super().__init__()
         self.urls = urls
         self.parser = None
-        self.success_count = 0
 
     def run(self):
         try:
@@ -33,14 +36,7 @@ class ParserWorker(QThread):
                 on_captcha=self.on_captcha
             )
 
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Avito"
-            ws.append([
-                "Ссылка", "Заголовок", "Цена",
-                "Цена за м²", "История цены",
-                "Адрес", "Площадь", "Описание"
-            ])
+            parsed_data = []
 
             for i, url in enumerate(self.urls, 1):
                 self.log.emit(f"[{i}/{len(self.urls)}] Парсинг: {url}")
@@ -56,34 +52,15 @@ class ParserWorker(QThread):
                     self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
                     continue
 
-                price = data.get("price")
-                area = data.get("area_m2")
-                price_per_m2 = round(price / area, 2) if price and area else None
-
-                history = "; ".join(
-                    f"{h['date']} — {h['price']}₽"
-                    for h in data.get("price_history", [])
-                )
-
-                ws.append([
-                    data.get("url"),
-                    data.get("title"),
-                    price,
-                    price_per_m2,
-                    history,
-                    data.get("address"),
-                    area,
-                    data.get("description"),
-                ])
-
-                self.success_count += 1
+                parsed_data.append(data)
 
             self.parser.close()
 
-            if self.success_count == 0:
-                self.finished.emit(None)
-            else:
-                self.finished.emit(wb)
+            result = {
+                "rows": parsed_data
+            }
+
+            self.finished.emit(result)
 
         except Exception as e:
             self.error.emit(str(e))
@@ -91,6 +68,7 @@ class ParserWorker(QThread):
     def on_captcha(self):
         self.captcha_detected.emit()
 
+    @pyqtSlot()
     def continue_after_captcha(self):
         if self.parser:
             self.parser.continue_after_captcha()
@@ -102,11 +80,15 @@ class ParserWorker(QThread):
 class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Avito Parser — Аналоги")
+        self.setWindowTitle("Парсер объявлений Авито (оценка)")
         self.resize(900, 600)
+
+        self.parsed_rows = []
+        self.excel_workbook = None
 
         layout = QVBoxLayout(self)
 
+        # ---------- Таблица ссылок ----------
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels([
             "Ссылка",
@@ -114,40 +96,48 @@ class AvitoApp(QWidget):
         ])
 
         header = self.table.horizontalHeader()
-
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Ссылка — растягивается
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Аналог — по тексту
-
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
 
+        # ---------- Кнопки ----------
         self.add_btn = QPushButton("➕ Добавить ссылку")
         self.start_btn = QPushButton("▶ Запустить парсинг")
         self.continue_btn = QPushButton("⏯ Продолжить парсинг")
-        self.continue_btn.setEnabled(False)
+        self.export_excel_btn = QPushButton("Экспорт Excel")
+        self.export_word_btn = QPushButton("Экспорт Word")
 
-        self.log = QTableWidget()
-        self.log.setColumnCount(1)
+        self.continue_btn.setEnabled(False)
+        self.export_excel_btn.setEnabled(False)
+        self.export_word_btn.setEnabled(False)
+
+        # ---------- Лог ----------
+        self.log = QTableWidget(0, 1)
         self.log.setHorizontalHeaderLabels(["Лог"])
         self.log.horizontalHeader().setStretchLastSection(True)
-        self.log.setRowCount(0)
 
         btns = QHBoxLayout()
         btns.addWidget(self.add_btn)
         btns.addWidget(self.start_btn)
         btns.addWidget(self.continue_btn)
+        btns.addWidget(self.export_excel_btn)
+        btns.addWidget(self.export_word_btn)
 
-        layout.addWidget(QLabel("Ссылки на объявления Авито:"))
+        layout.addWidget(QLabel("Ссылки на объявления с Авито:"))
         layout.addWidget(self.table)
         layout.addLayout(btns)
-        layout.addWidget(QLabel("Лог:"))
+        layout.addWidget(QLabel("Вывод:"))
         layout.addWidget(self.log)
 
         self.add_btn.clicked.connect(self.add_row)
         self.start_btn.clicked.connect(self.start_parsing)
         self.continue_btn.clicked.connect(self.continue_parsing)
+        self.export_excel_btn.clicked.connect(self.export_excel)
+        self.export_word_btn.clicked.connect(self.export_word)
 
         self.worker = None
 
+        # 5 строк при старте
         for _ in range(5):
             self.add_row()
 
@@ -159,12 +149,11 @@ class AvitoApp(QWidget):
         self.table.setItem(row, 0, QTableWidgetItem(""))
 
         checkbox = QCheckBox()
-
         container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.addWidget(checkbox)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setContentsMargins(0, 0, 0, 0)
+        lay = QHBoxLayout(container)
+        lay.addWidget(checkbox)
+        lay.setAlignment(Qt.AlignCenter)
+        lay.setContentsMargins(0, 0, 0, 0)
 
         self.table.setCellWidget(row, 1, container)
 
@@ -177,10 +166,21 @@ class AvitoApp(QWidget):
     # ---------- Parsing ----------
     def start_parsing(self):
         urls = []
+        self.checkbox_states = []
+
+        self.parsed_rows = []
+        self.excel_workbook = None
+        self.export_excel_btn.setEnabled(False)
+        self.export_word_btn.setEnabled(False)
+
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
+            widget = self.table.cellWidget(row, 1)
+            checkbox = widget.layout().itemAt(0).widget()
+
             if item and item.text().strip():
                 urls.append(item.text().strip())
+                self.checkbox_states.append(checkbox.isChecked())
 
         if not urls:
             QMessageBox.warning(self, "Ошибка", "Добавьте хотя бы одну ссылку")
@@ -217,33 +217,80 @@ class AvitoApp(QWidget):
             self.continue_btn.setEnabled(False)
             self.log_msg("▶ Парсинг продолжен")
 
-    def on_finished(self, workbook):
+    def on_finished(self, result):
         self.start_btn.setEnabled(True)
 
-        if workbook is None:
+        if result is None:
             QMessageBox.information(self, "Готово", "Нет успешно обработанных объявлений")
             return
 
+        self.parsed_rows = result["rows"]
+
+        self.export_excel_btn.setEnabled(True)
+        self.export_word_btn.setEnabled(True)
+
+        QMessageBox.information(self, "Готово", "Парсинг завершён. Данные готовы к экспорту.")
+
+    def on_error(self, msg):
+        self.start_btn.setEnabled(True)
+        QMessageBox.critical(self, "Ошибка", msg)
+
+    def export_excel(self):
+        if not self.parsed_rows:
+            return
+
+        wb = build_excel([
+            {
+                "data": data,
+                "is_analog": is_analog
+            }
+            for data, is_analog in zip(self.parsed_rows, self.checkbox_states)
+        ])
+
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Сохранить результат",
+            "Сохранить Excel",
             "avito_results.xlsx",
             "Excel Files (*.xlsx)"
         )
 
         if not path:
-            self.log_msg("❌ Сохранение отменено")
             return
 
         try:
-            workbook.save(path)
-            QMessageBox.information(self, "Готово", "Файл успешно сохранён")
+            wb.save(path)
+            QMessageBox.information(self, "Готово", "Excel файл сохранён")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
 
-    def on_error(self, msg):
-        self.start_btn.setEnabled(True)
-        QMessageBox.critical(self, "Ошибка", msg)
+    def export_word(self):
+        if not self.parsed_rows:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить Word",
+            "Аналоги.docx",
+            "Word Files (*.docx)"
+        )
+
+        if not path:
+            return
+
+        try:
+            build_word_with_screenshots(
+                [
+                    {
+                        "data": data,
+                        "is_analog": is_analog
+                    }
+                    for data, is_analog in zip(self.parsed_rows, self.checkbox_states)
+                ],
+                path
+            )
+            QMessageBox.information(self, "Готово", "Word файл сохранён")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
 
 
 # =========================

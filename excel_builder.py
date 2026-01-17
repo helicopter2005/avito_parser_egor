@@ -83,7 +83,7 @@ def build_excel(data_rows):
                 cell.font = bold
 
     # --- ШИРИНА СТОЛБЦОВ ---
-    widths = [10, 20, 10, 10, 10, 10, 10, 10, 14, 30, 55, 14]
+    widths = [10, 20, 10, 10, 10, 10, 10, 10, 14, 30, 65, 14]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
