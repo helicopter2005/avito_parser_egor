@@ -112,7 +112,7 @@ class AvitoParser:
 
     def _wait_for_page_load(self, timeout=60):
         """Циклическая проверка tooltip каждые 3 секунды"""
-        max_attempts = 15
+        max_attempts = 20
 
         for attempt in range(1, max_attempts + 1):
             print(f"  Попытка {attempt}/{max_attempts}: ждём 3 сек...")
@@ -195,7 +195,7 @@ class AvitoParser:
 
                 actions = ActionChains(self.driver)
                 actions.move_to_element(hover_element).perform()
-                time.sleep(1.5)
+                time.sleep(1)
 
                 # Делаем скриншот с открытым tooltip
                 ad_folder = self.images_dir / str(address_ad)
