@@ -110,6 +110,10 @@ def build_excel(data_rows):
             cell.alignment = align
 
         for col_idx, analog in enumerate(analogs, start=2):
+
+            if ws.column_dimensions[get_column_letter(col_idx)].width < 20:
+                ws.column_dimensions[get_column_letter(col_idx)].width = 20
+
             values = [
                 analog.get("address"),
                 analog.get("price"),

@@ -484,6 +484,15 @@ class AvitoParser:
             "[class*='geo-address']"
         ])
 
+        split_address = data['address'].split('\n')
+        address = ""
+
+        for idx, s in enumerate(split_address):
+            if 'мин.' not in s:
+                address = address + s + " "
+        data['address'] = address.strip()
+
+
         data["description"] = self._extract_text([
             "[data-marker='item-view/item-description']",
             "[itemprop='description']",
