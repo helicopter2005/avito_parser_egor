@@ -471,10 +471,6 @@ class AvitoParser:
                 pass
         data["price_info"] = price_info
 
-        # История цен + скриншот с tooltip
-        print("  Получение истории цен и скриншота...")
-        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'])
-
         data["address"] = self._extract_text([
             "[data-marker='delivery/location']",
             "[itemprop='address']",
@@ -482,6 +478,10 @@ class AvitoParser:
             "[class*='item-address'] span",
             "[class*='geo-address']"
         ])
+
+        # История цен + скриншот с tooltip
+        print("  Получение истории цен и скриншота...")
+        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         split_address = data['address'].split('\n')
         address = ""
@@ -528,7 +528,7 @@ class AvitoParser:
                 data["price"] = "Введите стоимость аренды вручную"
 
         # Нижний скриншот
-        bottom_screenshot = self._take_bottom_screenshot(data['title'])
+        bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
         data["screenshots"] = {"top": top_screenshot, "bottom": bottom_screenshot}
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
         print(f"  ✓ Цена: {data.get('price_text', 'Не найдена')}")
