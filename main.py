@@ -163,10 +163,24 @@ class AvitoApp(QWidget):
         self.log.setItem(row, 0, QTableWidgetItem(text))
         self.log.scrollToBottom()
 
+    def get_current_rows_with_analogs(self):
+        rows = []
+
+        for i, data in enumerate(self.parsed_rows):
+            widget = self.table.cellWidget(i, 1)
+            checkbox = widget.layout().itemAt(0).widget()
+            is_analog = checkbox.isChecked()
+
+            rows.append({
+                "data": data,
+                "is_analog": is_analog
+            })
+
+        return rows
+
     # ---------- Parsing ----------
     def start_parsing(self):
         urls = []
-        self.checkbox_states = []
 
         self.parsed_rows = []
         self.excel_workbook = None
@@ -180,7 +194,6 @@ class AvitoApp(QWidget):
 
             if item and item.text().strip():
                 urls.append(item.text().strip())
-                self.checkbox_states.append(checkbox.isChecked())
 
         if not urls:
             QMessageBox.warning(self, "Ошибка", "Добавьте хотя бы одну ссылку")
@@ -239,13 +252,9 @@ class AvitoApp(QWidget):
         if not self.parsed_rows:
             return
 
-        wb = build_excel([
-            {
-                "data": data,
-                "is_analog": is_analog
-            }
-            for data, is_analog in zip(self.parsed_rows, self.checkbox_states)
-        ])
+        rows = self.get_current_rows_with_analogs()
+
+        wb = build_excel(rows)
 
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -277,15 +286,11 @@ class AvitoApp(QWidget):
         if not path:
             return
 
+        rows = self.get_current_rows_with_analogs()
+
         try:
             build_word_with_screenshots(
-                [
-                    {
-                        "data": data,
-                        "is_analog": is_analog
-                    }
-                    for data, is_analog in zip(self.parsed_rows, self.checkbox_states)
-                ],
+                rows,
                 path
             )
             QMessageBox.information(self, "Готово", "Word файл сохранён")

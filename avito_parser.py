@@ -505,6 +505,10 @@ class AvitoParser:
         if area_match:
             data["area_m2"] = float(area_match.group(1).replace(',', '.'))
 
+        if data["params"].get("Площадь участка"):
+            data["params"]['Площадь участка'] = float(data["params"]['Площадь участка'].replace('сот.', '').strip()) * 100
+        if data["params"].get("Площадь"):
+            data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 100
         data["seller_name"] = self._extract_text([
             "[data-marker='seller-info/name']",
             ".seller-info-name",
