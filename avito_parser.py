@@ -23,6 +23,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 
 
+
 def resource_path(relative_path):
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
@@ -114,7 +115,7 @@ class AvitoParser:
         max_attempts = 20
 
         for attempt in range(1, max_attempts + 1):
-            print(f"  Попытка {attempt}/{max_attempts}: ждём 3 сек...")
+            print(f"  Попытка {attempt}/{max_attempts}: ждём 2 сек...")
             time.sleep(1)
 
 
