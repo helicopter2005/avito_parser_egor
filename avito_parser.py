@@ -21,7 +21,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
-
+from PIL import Image
 
 
 def resource_path(relative_path):
@@ -170,123 +170,297 @@ class AvitoParser:
             print("  Таймаут базовой загрузки")
 
     def _get_price_history_and_screenshot(self, address_ad):
-        """Получение истории цен + скриншот с открытым tooltip"""
+        """Получение истории цен + скриншот tooltip, обрезанный по контейнеру контента"""
+        import time
+        import re
+        from PIL import Image
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.common.action_chains import ActionChains
+
         price_history = []
         screenshot_path = None
 
         try:
-            from selenium.webdriver.common.action_chains import ActionChains
+            driver = self.driver
 
+            # ==============================
+            # 1️⃣ Ищем "История цены"
+            # ==============================
             hover_element = None
-            elements = self.driver.find_elements(By.XPATH,
-                                                 "//*[contains(text(), 'История цены')]")
+            elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'История цены')]")
+
             for el in elements:
                 try:
-                    if el.is_displayed() and el.size['width'] > 0:
+                    if el.is_displayed() and el.size["width"] > 0:
                         hover_element = el
                         break
-                except:
+                except Exception:
                     continue
 
-            if hover_element:
-                self._slow_pause("Навожу на 'История цены'...")
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", hover_element)
-                time.sleep(0.3)
+            if not hover_element:
+                print("  ℹ Элемент 'История цены' не найден")
+                return price_history, screenshot_path
 
-                actions = ActionChains(self.driver)
-                actions.move_to_element(hover_element).perform()
-                time.sleep(1)
+            self._slow_pause("Навожу на 'История цены'...")
+            driver.execute_script(
+                """arguments[0].scrollIntoView({block: 'center'});
+                window.scrollBy(0, 20);""",
+                hover_element
+            )
+            time.sleep(0.3)
 
-                # Делаем скриншот с открытым tooltip
-                ad_folder = self.images_dir / str(address_ad)
-                ad_folder.mkdir(parents=True, exist_ok=True)
-                self.driver.execute_script("window.scrollTo(0, 0);")
-                time.sleep(0.3)
-                top_path = ad_folder / "история цены.png"
-                self.driver.save_screenshot(str(top_path))
-                screenshot_path = str(top_path)
-                print(f"  ✓ Скриншот (цена+история): {top_path.name}")
+            ActionChains(driver).move_to_element(hover_element).perform()
+            time.sleep(1)
 
-                # Парсим tooltip
-                tooltip_selectors = [
-                    "[class*='tooltip']", "[class*='Tooltip']", "[class*='popup']",
-                    "[class*='Popup']", "[role='tooltip']", "[class*='popper']"
+            # ==============================
+            # 2️⃣ Контейнер контента
+            # ==============================
+            content_container = driver.find_element(
+                By.CSS_SELECTOR,
+                "div[class*='item-view-content']"
+            )
+
+            try:
+                ads_selectors = [
+                    "div[class*='item-view-ads']",
+                    "div[class*='ads']",
+                    "div[data-marker*='ads']"
                 ]
 
-                tooltip = None
-                for selector in tooltip_selectors:
-                    try:
-                        tooltips = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        for t in tooltips:
-                            if t.is_displayed() and '₽' in t.text and len(t.text) > 10:
-                                tooltip = t
-                                break
-                    except:
-                        continue
-                    if tooltip:
-                        break
+                for selector in ads_selectors:
+                    ads = content_container.find_elements(By.CSS_SELECTOR, selector)
+                    for ad in ads:
+                        self.driver.execute_script("arguments[0].remove();", ad)
 
+            except Exception:
+                pass
+
+            # ==============================
+            # 3️⃣ Делаем save_screenshot
+            # ==============================
+            ad_folder = self.images_dir / str(address_ad)
+            ad_folder.mkdir(parents=True, exist_ok=True)
+
+            full_path = ad_folder / "_tmp_full.png"
+            driver.save_screenshot(str(full_path))
+
+            # ==============================
+            # 4️⃣ Обрезка по контейнеру
+            # ==============================
+            rect = driver.execute_script("""
+                var r = arguments[0].getBoundingClientRect();
+                return {left:r.left, top:r.top, width:r.width, height:r.height};
+            """, content_container)
+
+            dpr = driver.execute_script("return window.devicePixelRatio || 1;")
+
+            left = int(rect["left"] * dpr)
+            top = int(rect["top"] * dpr)
+            right = int((rect["left"] + rect["width"]) * dpr)
+            bottom = int((rect["top"] + rect["height"]) * dpr)
+
+            img = Image.open(full_path)
+            img_w, img_h = img.size
+
+            # 🔧 защита от чёрных прямоугольников
+            left = max(0, left)
+            top = max(0, top)
+            right = min(img_w, right)
+            bottom = min(img_h, bottom)
+
+            final_path = ad_folder / "история цены.png"
+            img.crop((left, top, right, bottom)).save(final_path)
+            screenshot_path = str(final_path)
+
+            full_path.unlink(missing_ok=True)
+
+            print(f"  ✓ Скриншот (история цены): {final_path.name}")
+
+            # ==============================
+            # 5️⃣ Парсим tooltip (НЕ МЕНЯЛ)
+            # ==============================
+            tooltip_selectors = [
+                "[class*='tooltip']", "[class*='Tooltip']", "[class*='popup']",
+                "[class*='Popup']", "[role='tooltip']", "[class*='popper']"
+            ]
+
+            tooltip = None
+            for selector in tooltip_selectors:
+                try:
+                    tooltips = driver.find_elements(By.CSS_SELECTOR, selector)
+                    for t in tooltips:
+                        if t.is_displayed() and "₽" in t.text and len(t.text) > 10:
+                            tooltip = t
+                            break
+                except Exception:
+                    continue
                 if tooltip:
-                    text = tooltip.text.replace('\xa0', ' ')
-                    text = re.sub(r'\s+', ' ', text).strip()
-                    tokens = text.split(' ')
+                    break
 
-                    i = 0
-                    while i < len(tokens):
-                        if (i + 2 < len(tokens) and re.match(r'\d{1,2}', tokens[i])
-                                and re.match(r'[А-Яа-я]+', tokens[i + 1])
-                                and re.match(r'\d{4}', tokens[i + 2])):
-                            date = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
-                            i += 3
+            if tooltip:
+                text = tooltip.text.replace("\xa0", " ")
+                text = re.sub(r"\s+", " ", text).strip()
+                tokens = text.split(" ")
 
-                            num_parts = []
-                            while i < len(tokens) and re.match(r'\d+', tokens[i]):
-                                num_parts.append(tokens[i])
-                                i += 1
+                i = 0
+                while i < len(tokens):
+                    if (
+                            i + 2 < len(tokens)
+                            and re.match(r"\d{1,2}", tokens[i])
+                            and re.match(r"[А-Яа-я]+", tokens[i + 1])
+                            and re.match(r"\d{4}", tokens[i + 2])
+                    ):
+                        date = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
+                        i += 3
 
-                            if i < len(tokens) and tokens[i] == '₽':
-                                price = int(''.join(num_parts))
-                                price_history.append({"date": date, "price": price})
-                                i += 1
+                        num_parts = []
+                        while i < len(tokens) and tokens[i].isdigit():
+                            num_parts.append(tokens[i])
+                            i += 1
 
-                            while i < len(tokens):
-                                if tokens[i].isdigit() and i + 1 < len(tokens) and tokens[i + 1] == '₽':
-                                    i += 2
-                                    break
-                                if tokens[i] in ('Публикация', 'Следить'):
-                                    break
-                                i += 1
-                            continue
-                        i += 1
+                        if i < len(tokens) and tokens[i] == "₽":
+                            price = int("".join(num_parts))
+                            price_history.append({"date": date, "price": price})
+                            i += 1
 
-                    print(f"  ✓ История цен: {len(price_history)} записей")
+                    i += 1
 
-                # Убираем курсор
-                actions.move_by_offset(300, 300).perform()
-                time.sleep(0.3)
-            else:
-                print("  ℹ Элемент 'История цены' не найден")
+                print(f"  ✓ История цен: {len(price_history)} записей")
+
+            ActionChains(driver).move_by_offset(300, 300).perform()
+            time.sleep(0.3)
+
         except Exception as e:
             print(f"  ✗ Ошибка истории цен: {e}")
 
         return price_history, screenshot_path
 
-
     def _take_bottom_screenshot(self, address_ad):
-        """Скриншот нижней части без tooltip"""
+        """
+        Скриншоты объявления:
+        1) контейнер с описанием сверху
+        2) если дата не видна — контейнер, но после прокрутки вниз
+        """
+
+        screenshots = []
+
         try:
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
 
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            driver = self.driver
+
+            # ==============================
+            # 1️⃣ Контейнер контента
+            # ==============================
+            content_container = driver.find_element(
+                By.CSS_SELECTOR,
+                "div[class*='item-view-content']"
+            )
+
+            # ==============================
+            # 2️⃣ Удаляем рекламу (если есть)
+            # ==============================
+            try:
+                ads = content_container.find_elements(
+                    By.CSS_SELECTOR,
+                    "div[class*='item-view-ads']"
+                )
+                for ad in ads:
+                    driver.execute_script("arguments[0].remove();", ad)
+            except Exception:
+                pass
+
+            # ==============================
+            # 3️⃣ Скролл к описанию
+            # ==============================
+            try:
+                description = content_container.find_element(
+                    By.XPATH,
+                    ".//*[contains(@id,'item-view-description') or contains(@class,'item-view-description')]"
+                )
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'start'});",
+                    description
+                )
+            except NoSuchElementException:
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'start'});",
+                    content_container
+                )
+
             time.sleep(0.5)
-            bottom_path = ad_folder / "дата публикации.png"
-            self.driver.save_screenshot(str(bottom_path))
-            print(f"  ✓ Скриншот (низ): {bottom_path.name}")
-            return str(bottom_path)
+
+            # ==============================
+            # 4️⃣ Скрин №1 — контейнер (описание)
+            # ==============================
+            first_path = ad_folder / "описание.png"
+            content_container.screenshot(str(first_path))
+            screenshots.append(str(first_path))
+
+            # ==============================
+            # 5️⃣ Проверяем дату публикации
+            # ==============================
+            try:
+                date_element = driver.find_element(
+                    By.CSS_SELECTOR,
+                    "[data-marker='item-view/item-date']"
+                )
+
+                date_visible = driver.execute_script("""
+                    var r = arguments[0].getBoundingClientRect();
+                    return r.top >= 0 && r.bottom <= window.innerHeight;
+                """, date_element)
+
+            except NoSuchElementException:
+                date_visible = True  # даты нет — второй скрин не нужен
+
+            # ==============================
+            # 6️⃣ Если дата не видна — второй скрин
+            # ==============================
+            if not date_visible:
+                # скроллим страницу вниз
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(0.5)
+
+                full_path = ad_folder / "full.png"
+                driver.save_screenshot(str(full_path))
+
+                # ---- обрезка full.png до контейнера ----
+                rect = driver.execute_script("""
+                    var r = arguments[0].getBoundingClientRect();
+                    return {left:r.left, top:r.top, width:r.width, height:r.height};
+                """, content_container)
+
+                dpr = driver.execute_script("return window.devicePixelRatio || 1;")
+
+                left = int(rect["left"] * dpr)
+                top = int(rect["top"] * dpr)
+                right = int((rect["left"] + rect["width"]) * dpr)
+                bottom = int((rect["top"] + rect["height"]) * dpr)
+
+                img = Image.open(full_path)
+                img_width, img_height = img.size
+
+                left = max(0, left)
+                top = max(0, top)
+                right = min(img_width, right)
+                bottom = min(img_height, bottom)
+                cropped = img.crop((left, top, right, bottom))
+
+                second_path = ad_folder / "дата_публикации.png"
+                cropped.save(second_path)
+
+                screenshots.append(str(second_path))
+
+                # можно удалить временный full.png
+                full_path.unlink(missing_ok=True)
+
+            return screenshots
+
         except Exception as e:
-            print(f"  ✗ Ошибка скриншота: {e}")
-            return None
+            print(f"✗ Ошибка _take_bottom_screenshot: {e}")
+            return screenshots
 
     def continue_after_captcha(self):
         self._wait_for_user = False
@@ -414,6 +588,9 @@ class AvitoParser:
 
             self._wait_for_page_load()
         self._wait_for_page_load()
+
+        self.driver.execute_script("document.body.style.zoom='80%'")
+
         data = {
             "id": ad_id,
             "url": url,
@@ -478,8 +655,6 @@ class AvitoParser:
             "[itemprop='address']",
             ".style-item-address__string",
         ])
-
-        print(data['address'])
 
         split_address = data['address'].split('\n')
         address = ""
