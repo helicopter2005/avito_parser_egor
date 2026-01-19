@@ -5,20 +5,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 def set_tnr_12(paragraph):
-    """Применяет Times New Roman 12 к параграфу"""
     for run in paragraph.runs:
         run.font.name = "Times New Roman"
         run.font.size = Pt(12)
 
 
 def build_word_with_screenshots(data_rows, output_path):
-    """
-    data_rows: список словарей вида:
-    {
-        "data": {...},
-        "is_analog": True/False
-    }
-    """
 
     doc = Document()
 
@@ -49,7 +41,7 @@ def build_word_with_screenshots(data_rows, output_path):
     for row in analogs:
         analog = row["data"]
         title = analog.get("title")
-
+        address = analog.get("address").replace('\n', ' ')
         url = analog.get("url", "")
 
         # --- Заголовок ---
@@ -65,11 +57,12 @@ def build_word_with_screenshots(data_rows, output_path):
         screenshots_dir = os.path.join(
             os.getcwd(),
             "Скриншоты",
-            title
+            title + address
         )
 
         price_history_img = os.path.join(screenshots_dir, "история цены.png")
-        publish_date_img = os.path.join(screenshots_dir, "дата публикации.png")
+        description_img = os.path.join(screenshots_dir, 'описание.png')
+        publish_date_img = os.path.join(screenshots_dir, "дата_публикации.png")
 
         # --- Скриншоты ---
         if os.path.exists(price_history_img):
@@ -79,12 +72,19 @@ def build_word_with_screenshots(data_rows, output_path):
             run.add_picture(price_history_img, width=Pt(500))
             set_tnr_12(p_img1)
 
-        if os.path.exists(publish_date_img):
+        if os.path.exists(description_img):
             p_img2 = doc.add_paragraph()
             p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p_img2.add_run()
-            run.add_picture(publish_date_img, width=Pt(500))
+            run.add_picture(description_img, width=Pt(500))
             set_tnr_12(p_img2)
+
+        if os.path.exists(publish_date_img):
+            p_img3 = doc.add_paragraph()
+            p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p_img3.add_run()
+            run.add_picture(publish_date_img, width=Pt(500))
+            set_tnr_12(p_img3)
 
         # --- Ссылка ---
         p_link = doc.add_paragraph(url)
@@ -108,17 +108,19 @@ def build_word_with_screenshots(data_rows, output_path):
         for row in offers:
             data = row["data"]
 
-            title = data.get("title") or "Без названия"
+            title = data.get("title")
+            address = data.get('address').replace('\n', ' ')
             url = data.get("url", "")
 
             screenshots_dir = os.path.join(
                 os.getcwd(),
                 "Скриншоты",
-                title
+                title + address
             )
 
             price_history_img = os.path.join(screenshots_dir, "история цены.png")
-            publish_date_img = os.path.join(screenshots_dir, "дата публикации.png")
+            description_img = os.path.join(screenshots_dir, 'описание.png')
+            publish_date_img = os.path.join(screenshots_dir, "дата_публикации.png")
 
             if os.path.exists(price_history_img):
                 p_img1 = doc.add_paragraph()
@@ -126,6 +128,13 @@ def build_word_with_screenshots(data_rows, output_path):
                 run = p_img1.add_run()
                 run.add_picture(price_history_img, width=Pt(500))
                 set_tnr_12(p_img1)
+
+            if os.path.exists(description_img):
+                p_img2 = doc.add_paragraph()
+                p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p_img2.add_run()
+                run.add_picture(description_img, width=Pt(500))
+                set_tnr_12(p_img2)
 
             if os.path.exists(publish_date_img):
                 p_img2 = doc.add_paragraph()

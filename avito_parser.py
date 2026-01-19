@@ -339,8 +339,13 @@ class AvitoParser:
         """
         Скриншоты объявления:
         1) контейнер с описанием сверху
-        2) если дата не видна — контейнер, но после прокрутки вниз
+        2) если дата не видна — контейнер после прокрутки вниз
+        Все скрины обрезаются по контейнеру контента
         """
+        import time
+        from selenium.webdriver.common.by import By
+        from selenium.common.exceptions import NoSuchElementException
+        from PIL import Image
 
         screenshots = []
 
@@ -350,30 +355,32 @@ class AvitoParser:
 
             driver = self.driver
 
-            # ==============================
+            # ========================================
             # 1️⃣ Контейнер контента
-            # ==============================
+            # ========================================
             content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
+                By.CSS_SELECTOR, "div[class*='item-view-content']"
             )
 
-            # ==============================
+            # ========================================
             # 2️⃣ Удаляем рекламу (если есть)
-            # ==============================
+            # ========================================
             try:
                 ads = content_container.find_elements(
-                    By.CSS_SELECTOR,
-                    "div[class*='item-view-ads']"
+                    By.CSS_SELECTOR, "div[class*='item-view-ads']"
                 )
                 for ad in ads:
                     driver.execute_script("arguments[0].remove();", ad)
+
+                # Обновляем layout после удаления рекламы
+                driver.execute_script("window.dispatchEvent(new Event('resize'));")
+                time.sleep(0.3)
             except Exception:
                 pass
 
-            # ==============================
+            # ========================================
             # 3️⃣ Скролл к описанию
-            # ==============================
+            # ========================================
             try:
                 description = content_container.find_element(
                     By.XPATH,
@@ -388,45 +395,63 @@ class AvitoParser:
                     "arguments[0].scrollIntoView({block:'start'});",
                     content_container
                 )
-
             time.sleep(0.5)
 
-            # ==============================
-            # 4️⃣ Скрин №1 — контейнер (описание)
-            # ==============================
-            first_path = ad_folder / "описание.png"
-            content_container.screenshot(str(first_path))
-            screenshots.append(str(first_path))
+            # ========================================
+            # 4️⃣ Скрин №1 — описание (через save+crop)
+            # ========================================
+            first_full_path = ad_folder / "_tmp_full.png"
+            driver.save_screenshot(str(first_full_path))
 
-            # ==============================
+            rect = driver.execute_script("""
+                var r = arguments[0].getBoundingClientRect();
+                return {left:r.left, top:r.top, width:r.width, height:r.height};
+            """, content_container)
+
+            dpr = driver.execute_script("return window.devicePixelRatio || 1;")
+
+            left = int(rect["left"] * dpr)
+            top = int(rect["top"] * dpr)
+            right = int((rect["left"] + rect["width"]) * dpr)
+            bottom = int((rect["top"] + rect["height"]) * dpr)
+
+            img = Image.open(first_full_path)
+            img_w, img_h = img.size
+
+            left = max(0, left)
+            top = max(0, top)
+            right = min(img_w, right)
+            bottom = min(img_h, bottom)
+
+            first_cropped_path = ad_folder / "описание.png"
+            img.crop((left, top, right, bottom)).save(first_cropped_path)
+            screenshots.append(str(first_cropped_path))
+            first_full_path.unlink(missing_ok=True)
+
+            # ========================================
             # 5️⃣ Проверяем дату публикации
-            # ==============================
+            # ========================================
             try:
                 date_element = driver.find_element(
-                    By.CSS_SELECTOR,
-                    "[data-marker='item-view/item-date']"
+                    By.CSS_SELECTOR, "[data-marker='item-view/item-date']"
                 )
-
                 date_visible = driver.execute_script("""
                     var r = arguments[0].getBoundingClientRect();
                     return r.top >= 0 && r.bottom <= window.innerHeight;
                 """, date_element)
-
             except NoSuchElementException:
                 date_visible = True  # даты нет — второй скрин не нужен
 
-            # ==============================
+            # ========================================
             # 6️⃣ Если дата не видна — второй скрин
-            # ==============================
+            # ========================================
             if not date_visible:
-                # скроллим страницу вниз
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(0.5)
 
-                full_path = ad_folder / "full.png"
-                driver.save_screenshot(str(full_path))
+                second_full_path = ad_folder / "_tmp_full2.png"
+                driver.save_screenshot(str(second_full_path))
 
-                # ---- обрезка full.png до контейнера ----
                 rect = driver.execute_script("""
                     var r = arguments[0].getBoundingClientRect();
                     return {left:r.left, top:r.top, width:r.width, height:r.height};
@@ -439,22 +464,18 @@ class AvitoParser:
                 right = int((rect["left"] + rect["width"]) * dpr)
                 bottom = int((rect["top"] + rect["height"]) * dpr)
 
-                img = Image.open(full_path)
-                img_width, img_height = img.size
+                img = Image.open(second_full_path)
+                img_w, img_h = img.size
 
                 left = max(0, left)
                 top = max(0, top)
-                right = min(img_width, right)
-                bottom = min(img_height, bottom)
-                cropped = img.crop((left, top, right, bottom))
+                right = min(img_w, right)
+                bottom = min(img_h, bottom)
 
-                second_path = ad_folder / "дата_публикации.png"
-                cropped.save(second_path)
-
-                screenshots.append(str(second_path))
-
-                # можно удалить временный full.png
-                full_path.unlink(missing_ok=True)
+                second_cropped_path = ad_folder / "дата_публикации.png"
+                img.crop((left, top, right, bottom)).save(second_cropped_path)
+                screenshots.append(str(second_cropped_path))
+                second_full_path.unlink(missing_ok=True)
 
             return screenshots
 
