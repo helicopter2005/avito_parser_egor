@@ -71,7 +71,7 @@ class AvitoParser:
         options.page_load_strategy = "eager"
 
         # Попытка 1: Yandex Browser с yandexdriver.exe
-        yandex_driver_path = resource_path("yandexdriver.exe")  # или полный путь: "C:/drivers/yandexdriver.exe"
+        yandex_driver_path = resource_path("yandexdriver.exe")
 
         if os.path.exists(yandex_driver_path):
             try:
@@ -270,6 +270,7 @@ class AvitoParser:
             print(f"  ✗ Ошибка истории цен: {e}")
 
         return price_history, screenshot_path
+
 
     def _take_bottom_screenshot(self, address_ad):
         """Скриншот нижней части без tooltip"""
@@ -476,13 +477,9 @@ class AvitoParser:
             "[data-marker='delivery/location']",
             "[itemprop='address']",
             ".style-item-address__string",
-            "[class*='item-address'] span",
-            "[class*='geo-address']"
         ])
 
-        # История цен + скриншот с tooltip
-        print("  Получение истории цен и скриншота...")
-        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
+        print(data['address'])
 
         split_address = data['address'].split('\n')
         address = ""
@@ -492,6 +489,9 @@ class AvitoParser:
                 address = address + s + " "
         data['address'] = address.strip()
 
+        # История цен + скриншот с tooltip
+        print("  Получение истории цен и скриншота...")
+        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         data["description"] = self._extract_text([
             "[data-marker='item-view/item-description']",
