@@ -41,6 +41,8 @@ class ParserWorker(QThread):
             for i, url in enumerate(self.urls, 1):
                 self.log.emit(f"[{i}/{len(self.urls)}] Парсинг: {url}")
 
+                url = url.split("?")[0]
+
                 try:
                     data = self.parser.parse_ad(url)
 
@@ -254,7 +256,7 @@ class AvitoApp(QWidget):
 
         rows = self.get_current_rows_with_analogs()
 
-        wb = build_excel(rows)
+        wb = build_excel(self, rows)
 
         path, _ = QFileDialog.getSaveFileName(
             self,
