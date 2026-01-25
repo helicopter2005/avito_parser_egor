@@ -126,7 +126,6 @@ class AvitoParser:
                                     )
                 for el in elements:
                     text = el.text.strip()
-                    print(text)
                     if 'История цены' in text:
                         break
                 else:
@@ -785,8 +784,10 @@ class AvitoParser:
             "[class*='date-info']"
         ])
 
+        print(data["price_text"])
         # Если в объявлении указана только цена за м2 в месяц
-        if "в месяц за м²" in data["price_text"].split('\n')[0]:
+        if "в месяц за м²" in data["price_text"].split('\n')[:2]:
+            print(1)
             if area_match:
                 data["price"] = round(data["price"] * data["area_m2"], 1)
             else:

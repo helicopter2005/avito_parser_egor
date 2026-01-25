@@ -11,7 +11,9 @@ def extract_price_per_m2(self, price_info: str):
     match = re.search(r'([\d\s]+)\s*₽', price_info)
     if match:
         try:
-            return int(match.group(1).replace(" ", ""))
+            if 'за сотку' in price_info:
+                return float(match.group(1).replace(" ", "")) / 100
+            return float(match.group(1).replace(" ", ""))
         except Exception as e:
             QMessageBox.critical(self, "Ошибка в функции price_per_m2", str(e))
     return None
