@@ -700,11 +700,21 @@ class AvitoParser:
         area_match = re.search(r'(\d+[.,]?\d*)\s*м[²2]', data.get("title", "") + str(data.get("params", {})))
         if area_match:
             data["area_m2"] = float(area_match.group(1).replace(',', '.'))
+        if data["params"].get("Общая площадь"):
+            data["area_m2"] = float(data["params"].get("Общая площадь").replace('м²', '').strip())
 
         if data["params"].get("Площадь участка"):
-            data["params"]['Площадь участка'] = float(data["params"]['Площадь участка'].replace('сот.', '').strip()) * 100
+            if 'сот.' in data["params"].get("Площадь участка"):
+                data["params"]['Площадь участка'] = float(data["params"]['Площадь участка'].replace('сот.', '').strip()) * 100
+            elif 'га' in data["params"].get("Площадь участка"):
+                data["params"]['Площадь участка'] = float(
+                    data["params"]['Площадь участка'].replace('сот.', '').strip()) * 10000
         if data["params"].get("Площадь"):
-            data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 100
+            if 'сот.' in data["params"].get("Площадь"):
+                data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 100
+            elif 'га' in data["params"].get("Площадь"):
+                data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 10000
+
         data["seller_name"] = self._extract_text([
             "[data-marker='seller-info/name']",
             ".seller-info-name",
