@@ -118,7 +118,21 @@ class AvitoParser:
             print(f"  Попытка {attempt}/{max_attempts}: ждём 2 сек...")
             time.sleep(1)
 
+            try:
 
+                elements = self.driver.find_elements(
+                                        By.CSS_SELECTOR,
+                                        '[class*="item-price"]'
+                                    )
+                for el in elements:
+                    text = el.text.strip()
+                    print(text)
+                    if 'История цены' in text:
+                        break
+                else:
+                    raise Exception("История цены не найдена")
+            except:
+                break
 
             # Проверяем tooltip
             try:
@@ -312,6 +326,68 @@ class AvitoParser:
             print(f"  ✗ Ошибка истории цен: {e}")
 
         return price_history, screenshot_path
+
+    def _take_top_screenshot(self, address_ad):
+
+        try:
+            driver = self.driver
+
+            content_container = driver.find_element(
+                By.CSS_SELECTOR,
+                "div[class*='item-view-content']"
+            )
+
+            try:
+                ads_selectors = [
+                    "div[class*='item-view-ads']",
+                    "div[class*='ads']",
+                    "div[data-marker*='ads']"
+                ]
+
+                for selector in ads_selectors:
+                    ads = content_container.find_elements(By.CSS_SELECTOR, selector)
+                    for ad in ads:
+                        self.driver.execute_script("arguments[0].remove();", ad)
+
+            except Exception:
+                pass
+
+            ad_folder = self.images_dir / str(address_ad)
+            ad_folder.mkdir(parents=True, exist_ok=True)
+
+            full_path = ad_folder / "_tmp_full.png"
+            driver.save_screenshot(str(full_path))
+
+            rect = driver.execute_script("""
+                            var r = arguments[0].getBoundingClientRect();
+                            return {left:r.left, top:r.top, width:r.width, height:r.height};
+                        """, content_container)
+
+            dpr = driver.execute_script("return window.devicePixelRatio || 1;")
+
+            left = int(rect["left"] * dpr)
+            top = int(rect["top"] * dpr)
+            right = int((rect["left"] + rect["width"]) * dpr)
+            bottom = int((rect["top"] + rect["height"]) * dpr)
+
+            img = Image.open(full_path)
+            img_w, img_h = img.size
+
+            # 🔧 защита от чёрных прямоугольников
+            left = max(0, left)
+            top = max(0, top)
+            right = min(img_w, right)
+            bottom = min(img_h, bottom)
+
+            final_path = ad_folder / "титул.png"
+            img.crop((left, top, right, bottom)).save(final_path)
+            screenshot_path = str(final_path)
+
+            full_path.unlink(missing_ok=True)
+
+            return screenshot_path
+        except:
+            pass
 
     def _take_bottom_screenshot(self, address_ad):
         """
@@ -665,8 +741,11 @@ class AvitoParser:
 
         # История цен + скриншот с tooltip
         print("  Получение истории цен и скриншота...")
+        print(f"getHist:{getHistory}")
         if getHistory:
             data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
+        else:
+            top_screenshot = self._take_top_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         data["description"] = self._extract_text([
             "[data-marker='item-view/item-description']",
