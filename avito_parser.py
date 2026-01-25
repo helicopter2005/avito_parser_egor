@@ -145,8 +145,7 @@ class AvitoParser:
                                 try:
                                     if t.is_displayed() and '₽' in t.text:
                                         print("  ✓ Tooltip найден, начинаем парсинг")
-                                        actions.move_by_offset(300, 300).perform()
-                                        return  # Успех!
+                                        return True # Успех!
                                 except:
                                     continue
 
@@ -169,6 +168,8 @@ class AvitoParser:
         except TimeoutException:
             print("  Таймаут базовой загрузки")
 
+        return False
+
     def _get_price_history_and_screenshot(self, address_ad):
         """Получение истории цен + скриншот tooltip, обрезанный по контейнеру контента"""
         import time
@@ -180,41 +181,27 @@ class AvitoParser:
         price_history = []
         screenshot_path = None
 
+        hover_element = None
+        elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'История цены')]")
+
+        for el in elements:
+            try:
+                if el.is_displayed() and el.size["width"] > 0:
+                    hover_element = el
+                    break
+            except Exception:
+                continue
+
+        self.driver.execute_script(
+            """arguments[0].scrollIntoView({block: 'center'});
+            window.scrollBy(0, 20);""",
+            hover_element
+        )
+
+        ActionChains(self.driver).move_to_element(hover_element).perform()
+
         try:
             driver = self.driver
-
-            # ==============================
-            # 1️⃣ Ищем "История цены"
-            # ==============================
-            hover_element = None
-            elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'История цены')]")
-
-            for el in elements:
-                try:
-                    if el.is_displayed() and el.size["width"] > 0:
-                        hover_element = el
-                        break
-                except Exception:
-                    continue
-
-            if not hover_element:
-                print("  ℹ Элемент 'История цены' не найден")
-                return price_history, screenshot_path
-
-            self._slow_pause("Навожу на 'История цены'...")
-            driver.execute_script(
-                """arguments[0].scrollIntoView({block: 'center'});
-                window.scrollBy(0, 20);""",
-                hover_element
-            )
-            time.sleep(0.3)
-
-            ActionChains(driver).move_to_element(hover_element).perform()
-            time.sleep(1)
-
-            # ==============================
-            # 2️⃣ Контейнер контента
-            # ==============================
             content_container = driver.find_element(
                 By.CSS_SELECTOR,
                 "div[class*='item-view-content']"
@@ -235,18 +222,12 @@ class AvitoParser:
             except Exception:
                 pass
 
-            # ==============================
-            # 3️⃣ Делаем save_screenshot
-            # ==============================
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
 
             full_path = ad_folder / "_tmp_full.png"
             driver.save_screenshot(str(full_path))
 
-            # ==============================
-            # 4️⃣ Обрезка по контейнеру
-            # ==============================
             rect = driver.execute_script("""
                 var r = arguments[0].getBoundingClientRect();
                 return {left:r.left, top:r.top, width:r.width, height:r.height};
@@ -276,9 +257,6 @@ class AvitoParser:
 
             print(f"  ✓ Скриншот (история цены): {final_path.name}")
 
-            # ==============================
-            # 5️⃣ Парсим tooltip (НЕ МЕНЯЛ)
-            # ==============================
             tooltip_selectors = [
                 "[class*='tooltip']", "[class*='Tooltip']", "[class*='popup']",
                 "[class*='Popup']", "[role='tooltip']", "[class*='popper']"
@@ -607,8 +585,8 @@ class AvitoParser:
             while self._wait_for_user:
                 time.sleep(0.3)
 
-            self._wait_for_page_load()
-        self._wait_for_page_load()
+            getHistory = self._wait_for_page_load()
+        getHistory = self._wait_for_page_load()
 
         self.driver.execute_script("document.body.style.zoom='80%'")
 
@@ -687,7 +665,8 @@ class AvitoParser:
 
         # История цен + скриншот с tooltip
         print("  Получение истории цен и скриншота...")
-        data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
+        if getHistory:
+            data["price_history"], top_screenshot = self._get_price_history_and_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         data["description"] = self._extract_text([
             "[data-marker='item-view/item-description']",
@@ -728,7 +707,7 @@ class AvitoParser:
         ])
 
         # Если в объявлении указана только цена за м2 в месяц
-        if "в месяц за м²" in data["price_text"]:
+        if "в месяц за м²" in data["price_text"].split('\n')[0]:
             if area_match:
                 data["price"] = round(data["price"] * data["area_m2"], 1)
             else:
@@ -738,7 +717,7 @@ class AvitoParser:
         bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
         data["screenshots"] = {"top": top_screenshot, "bottom": bottom_screenshot}
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
-        print(f"  ✓ Цена: {data.get('price_text', 'Не найдена')}")
+        print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")
 
         return data
