@@ -13,6 +13,8 @@ def extract_price_per_m2(self, price_info: str):
         try:
             if 'за сотку' in price_info:
                 return float(match.group(1).replace(" ", "")) / 100
+            if 'в год' in price_info:
+                return float(match.group(1).replace(" ", "")) / 12
             return float(match.group(1).replace(" ", ""))
         except Exception as e:
             QMessageBox.critical(self, "Ошибка в функции price_per_m2", str(e))
