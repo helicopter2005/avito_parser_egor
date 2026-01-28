@@ -35,11 +35,11 @@ def build_excel(self, data_rows):
     headers = [
         "№",
         "Адрес",
-        "Цена",
-        "Площадь",
-        "Цена за м²",
+        "Цена, руб",
+        "Площадь, кв.м",
+        "Цена за м², руб",
         "Этаж",
-        "Площадь участка",
+        "Площадь участка, кв.м",
         "Материал стен",
         "Год постройки",
         "Ссылка",
@@ -103,28 +103,28 @@ def build_excel(self, data_rows):
     analogs = [r["data"] for r in data_rows if r["is_analog"]]
 
     if analogs:
-        start_row = ws.max_row + 3
-
+        analogs_ws = wb.create_sheet(title="Аналоги")
+        start_row = 1
         labels = [
             "Адрес",
-            "Цена",
-            "Площадь",
-            "Цена за м²",
+            "Цена, руб",
+            "Площадь, кв.м",
+            "Цена за м², руб",
             "Этаж",
-            "Площадь участка",
+            "Площадь участка, кв.м",
             "Ссылка"
         ]
 
         for i, label in enumerate(labels):
-            cell = ws.cell(row=start_row + i, column=1, value=label)
+            cell = analogs_ws.cell(row=start_row + i, column=1, value=label)
             cell.font = bold
             cell.border = border
             cell.alignment = align
 
         for col_idx, analog in enumerate(analogs, start=2):
 
-            if ws.column_dimensions[get_column_letter(col_idx)].width < 20:
-                ws.column_dimensions[get_column_letter(col_idx)].width = 20
+            if analogs_ws.column_dimensions[get_column_letter(col_idx)].width < 20:
+                analogs_ws.column_dimensions[get_column_letter(col_idx)].width = 20
             try:
                 values = [
                     analog.get("address"),
@@ -137,7 +137,7 @@ def build_excel(self, data_rows):
                 ]
 
                 for row_offset, value in enumerate(values):
-                    cell = ws.cell(
+                    cell = analogs_ws.cell(
                         row=start_row + row_offset,
                         column=col_idx,
                         value=value
