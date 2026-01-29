@@ -696,15 +696,37 @@ class CianParser:
 
         return price, price_type
 
+    def _parse_price_per_m2(self):
+        try:
+            items = self.driver.find_elements(By.CSS_SELECTOR, "[data-name='OfferFactItem']")
+
+            for item in items:
+                title = item.find_element(By.TAG_NAME, "span").text.strip()
+                print(item)
+                if "Цена за метр" in title:
+                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
+                    value = value.replace("₽/м²", "").replace(" ", "")
+                    return float(value)
+                elif "Цена за сотку" in title:
+                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
+                    value = value.replace("₽/сот.", "").replace(" ", "")
+                    return float(value) / 100
+
+            return None
+
+        except Exception as e:
+            print(str(e))
+            return None
+
     def _extract_params(self):
         """Извлечение параметров объявления"""
         params = {}
 
         try:
             param_selectors = [
-                "[class*='offer-card-params'] li",
-                "[class*='features'] li",
                 "[data-name*='ObjectFactoids'] div",
+                "[class*='features'] li",
+                "[class*='offer-card-params'] li",
                 "[data-name='OfferCardFeatures'] li"
             ]
 
@@ -737,10 +759,6 @@ class CianParser:
             self._setup_driver()
 
         print(f"\nПарсинг: {url}")
-
-        # Извлекаем ID объявления из URL
-        ad_id_match = re.search(r'/(\d+)/?(?:\?|$)', url)
-        ad_id = ad_id_match.group(1) if ad_id_match else hashlib.md5(url.encode()).hexdigest()[:10]
 
         self.driver.get(url)
         time.sleep(2)
@@ -792,7 +810,6 @@ class CianParser:
 
         # Инициализируем данные
         data = {
-            "id": ad_id,
             "url": url,
             "parsed_at": datetime.now().isoformat(),
         }
@@ -816,6 +833,10 @@ class CianParser:
         data["price_text"] = price_text
         data["price"], data["price_type"] = self._parse_price(price_text)
 
+        price_per_m2 = self._parse_price_per_m2()
+        if price_per_m2:
+            data["price_per_m2"] = price_per_m2
+
         # Адрес
         data["address"] = self._extract_text([
             "[data-name='Geo']",
@@ -826,7 +847,7 @@ class CianParser:
 
         # Очищаем адрес от лишних строк
         if data["address"]:
-            data["address"] = data["address"].replace("На карте", "").strip()
+            data["address"] = data["address"].split("На карте")[0].strip()
 
         # Создаем идентификатор для папки скриншотов
         screenshot_id = (data.get('title', '') + " " + data.get('address', '')).replace("\n", " ").strip()
@@ -834,9 +855,6 @@ class CianParser:
         # Скриншот 1: Верхняя часть с историей цен (если есть)
         print("  Получение верхнего скриншота...")
         top_screenshot, price_history = self._take_top_screenshot_with_price_history(screenshot_id)
-
-        if price_history:
-            data["price_history"] = price_history
 
         # Скриншот 2: Дата публикации
         print("  Получение скриншота даты публикации...")
@@ -859,7 +877,7 @@ class CianParser:
             "[data-name='OfferCardDescription']",
             "[itemprop='description']",
             "[class*='description-text']"
-        ])
+        ]).replace("Свернуть", "").strip()
 
         # Параметры
         data["params"] = self._extract_params()
@@ -870,32 +888,27 @@ class CianParser:
                 try:
                     area_text = data["params"][key]
                     area_value = float(re.search(r'(\d+[.,]?\d*)', area_text).group(1).replace(',', '.'))
-                    data["Площадь"] = area_value
+                    data["area_m2"] = area_value
                     break
                 except:
                     pass
 
         # Извлекаем этаж
         if data["params"].get("Этаж"):
-            data["Этаж"] = data["params"]["Этаж"].split('из')[0].strip()
+            data["params"]["Этаж"] = data["params"]["Этаж"].split('из')[0].strip()
 
         # Площадь участка
         for key in ["Площадь участка", "Участок"]:
             if data["params"].get(key):
                 try:
-                    data["Площадь участка"] = float(data["params"].get(key).replace("сот.", '').replace(',', '.').strip()) * 100
+                    data["params"]["Площадь участка"] = float(data["params"].get(key).replace("сот.", '').replace(',', '.').strip()) * 100
                     break
                 except:
                     pass
 
         # Материал стен
         if data["params"].get("Материал дома"):
-            data["Материал стен"] = data["params"]["Материал дома"]
-
-        # Год постройки
-        if data["params"].get("Год постройки"):
-            data["Год постройки"] = data["params"]["Год постройки"]
-
+            data["params"]["Материал стен"] = data["params"]["Материал дома"]
 
         # Дата публикации
         data["published_date"] = self._extract_text([
@@ -913,6 +926,7 @@ class CianParser:
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Адрес: {data.get('address', 'Не найден')[:50]}...")
 
+        print(data)
         return data
 
     def parse_multiple(self, urls):
