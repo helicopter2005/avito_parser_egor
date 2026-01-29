@@ -611,6 +611,21 @@ class AvitoParser:
             pass
         return params
 
+    def extract_price_per_m2(self, price_info: str):
+        if not price_info:
+            return None
+        match = re.search(r'([\d\s]+)\s*₽', price_info)
+        if match:
+            try:
+                if 'за сотку' in price_info or '':
+                    return float(match.group(1).replace(" ", "")) / 100
+                if 'в год' in price_info:
+                    return float(match.group(1).replace(" ", "")) / 12
+                return float(match.group(1).replace(" ", ""))
+            except:
+                pass
+        return None
+
     def parse_ad(self, url):
         if not self.driver:
             self._setup_driver()
@@ -723,6 +738,13 @@ class AvitoParser:
             except:
                 pass
         data["price_info"] = price_info
+
+        try:
+            data["price_per_m2"] = self.extract_price_per_m2(data["price_info"])
+        except:
+            data["price_per_m2"] = "Введите вручную"
+            pass
+
 
         data["address"] = self._extract_text([
             "[data-marker='delivery/location']",
