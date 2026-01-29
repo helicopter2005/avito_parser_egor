@@ -27,7 +27,8 @@ class ParserWorker(QThread):
     def __init__(self, urls):
         super().__init__()
         self.urls = urls
-        self.parser = None
+        self.parserAvito = None
+        self.parserCian = None
 
     def run(self):
         try:
@@ -92,8 +93,10 @@ class ParserWorker(QThread):
 
     @pyqtSlot()
     def continue_after_captcha(self):
-        if self.parser:
-            self.parser.continue_after_captcha()
+        if self.parserAvito:
+            self.parserAvito.continue_after_captcha()
+        if self.parserCian:
+            self.parserCian.continue_after_captcha()
 
 
 # =========================
@@ -232,13 +235,13 @@ class AvitoApp(QWidget):
         self.worker.start()
 
     def on_captcha(self):
-        self.log_msg("⚠ Обнаружена капча")
+        self.log_msg("⚠ Обнаружена капча или требуется авторизация")
         self.continue_btn.setEnabled(True)
 
         QMessageBox.warning(
             self,
-            "Капча",
-            "Решите капчу в браузере,\n"
+            "Требуется действие",
+            "Решите капчу или авторизуйтесь в браузере,\n"
             "затем нажмите «Продолжить парсинг»"
         )
 

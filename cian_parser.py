@@ -118,11 +118,26 @@ class CianParser:
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") in ["complete"]
             )
-            time.sleep(2)
+            time.sleep(0.5)
             return True
         except TimeoutException:
             print("  Таймаут загрузки страницы")
             return False
+
+    def _check_authorization(self):
+        """Проверка авторизации пользователя"""
+        try:
+            user_related = self.driver.find_element(By.CSS_SELECTOR, "[data-name='UserRelated']")
+            if "Войти" in user_related.text:
+                print("  ⚠ Требуется авторизация")
+                return False
+            return True
+        except NoSuchElementException:
+            # Элемент не найден - считаем что авторизован
+            return True
+        except Exception as e:
+            print(f"  ℹ Ошибка проверки авторизации: {e}")
+            return True
 
     def _expand_description(self):
         """Раскрытие полного описания, если есть кнопка 'Узнать больше'"""
@@ -802,6 +817,15 @@ class CianParser:
 
         # Ждем загрузки страницы
         self._wait_for_page_load()
+
+        if not self._check_authorization():
+            self._wait_for_user = True
+
+            if self.on_captcha:
+                self.on_captcha()
+
+            while self._wait_for_user:
+                time.sleep(0.3)
 
         # Уменьшаем масштаб для лучших скриншотов
         self.driver.execute_script("document.body.style.zoom='80%'")
