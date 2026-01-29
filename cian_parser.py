@@ -850,7 +850,7 @@ class CianParser:
             data["address"] = data["address"].split("На карте")[0].strip()
 
         # Создаем идентификатор для папки скриншотов
-        screenshot_id = (data.get('title', '') + " " + data.get('address', '')).replace("\n", " ").strip()
+        screenshot_id = (data.get('title', '') + data.get('address', '')).replace("\n", " ").strip()
 
         # Скриншот 1: Верхняя часть с историей цен (если есть)
         print("  Получение верхнего скриншота...")
