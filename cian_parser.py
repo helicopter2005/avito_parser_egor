@@ -513,12 +513,12 @@ class CianParser:
             return None
 
     def _take_description_screenshot(self, address_ad):
-        """Скриншот описания (чуть выше блока Description)"""
+        """Скриншот описания: 1 скрин или 2 (верх/низ), если не влезает в viewport"""
         try:
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
 
-            # Раскрываем описание, если нужно
+            # Раскрываем описание
             self._expand_description()
 
             # Ищем блок описания
@@ -532,84 +532,117 @@ class CianParser:
             description_element = None
             for selector in description_selectors:
                 try:
-                    description_element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    if description_element.is_displayed() and description_element.size['height'] > 50:
+                    el = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if el.is_displayed() and el.size["height"] > 50:
+                        description_element = el
                         break
                 except:
                     continue
 
-            if description_element:
-                # Скроллим чуть выше блока описания
-                self.driver.execute_script(
-                    """var r = arguments[0].getBoundingClientRect(); var viewportHeight = window.innerHeight; 
-                    window.scrollBy(0, r.top - (viewportHeight / 2) + (r.height / 2));""",
-                    description_element
-                )
-                time.sleep(0.5)
-            else:
+            if not description_element:
                 print("  ⚠ Блок описания не найден")
                 return None
 
-            # Ищем контейнер контента - только OfferCardPageLayout
+            # Центрируем описание в viewport
+            self.driver.execute_script("""
+                var r = arguments[0].getBoundingClientRect();
+                var vh = window.innerHeight;
+                window.scrollBy(0, r.top - (vh / 2) + (r.height / 2));
+            """, description_element)
+            time.sleep(0.5)
+
+            # Размеры description и viewport
+            desc_metrics = self.driver.execute_script("""
+                var r = arguments[0].getBoundingClientRect();
+                return { height: r.height, top: r.top, bottom: r.bottom };
+            """, description_element)
+
+            viewport_height = self.driver.execute_script("return window.innerHeight;")
+            need_two_screens = desc_metrics["height"] > viewport_height * 0.9
+
+            # Ищем контейнер страницы
             content_container = None
             try:
-                content_container = self.driver.find_element(By.CSS_SELECTOR, "[data-name='OfferCardPageLayout']")
-                if not content_container.is_displayed() or content_container.size['width'] < 100:
-                    content_container = None
+                cc = self.driver.find_element(By.CSS_SELECTOR, "[data-name='OfferCardPageLayout']")
+                if cc.is_displayed() and cc.size["width"] > 100:
+                    content_container = cc
             except:
-                content_container = None
+                pass
 
             if not content_container:
                 print("  ⚠ Контейнер OfferCardPageLayout не найден, используем весь скриншот")
 
-            # Делаем полный скриншот страницы
-            full_path = ad_folder / "_tmp_desc.png"
-            self.driver.save_screenshot(str(full_path))
+            screenshots = []
 
-            img = Image.open(full_path)
-            img_w, img_h = img.size
+            def make_screenshot(name):
+                path = ad_folder / name
+                self.driver.save_screenshot(str(path))
+                return path
 
-            if content_container:
-                # Получаем координаты контейнера
-                rect = self.driver.execute_script("""
-                    var r = arguments[0].getBoundingClientRect();
-                    return {left:r.left, top:r.top, width:r.width, height:r.height};
-                """, content_container)
-
-                dpr = self.driver.execute_script("return window.devicePixelRatio || 1;")
-
-                left = int(rect["left"] * dpr)
-                top = int(rect["top"] * dpr)
-                width = int(rect["width"] * dpr)
-                height = int(rect["height"] * dpr)
-
-                right = left + width
-                bottom = top + height
-
-                # Корректируем координаты
-                left = max(0, min(left, img_w - 1))
-                top = max(0, min(top, img_h - 1))
-                right = max(left + 1, min(right, img_w))
-                bottom = max(top + 1, min(bottom, img_h))
-
-                # Проверяем что координаты валидны
-                if right <= left or bottom <= top or width < 100 or height < 100:
-                    print(f"  ⚠ Некорректные размеры контейнера, используем весь скриншот")
-                    final_path = ad_folder / "описание.png"
-                    img.save(final_path)
-                else:
-                    final_path = ad_folder / "описание.png"
-                    img.crop((left, top, right, bottom)).save(final_path)
+            if not need_two_screens:
+                screenshots.append(make_screenshot("_tmp_desc_1.png"))
             else:
-                # Если контейнер не найден, сохраняем весь скриншот
-                final_path = ad_folder / "описание.png"
-                img.save(final_path)
+                # --- скрин 1: верх описания ---
+                self.driver.execute_script("""
+                    var r = arguments[0].getBoundingClientRect();
+                    window.scrollBy(0, r.top - window.innerHeight * 0.1);
+                """, description_element)
+                time.sleep(0.4)
+                screenshots.append(make_screenshot("_tmp_desc_1.png"))
 
-            screenshot_path = str(final_path)
-            full_path.unlink(missing_ok=True)
+                # --- скрин 2: низ описания ---
+                self.driver.execute_script("""
+                    var r = arguments[0].getBoundingClientRect();
+                    window.scrollBy(0, r.bottom - window.innerHeight * 0.9);
+                """, description_element)
+                time.sleep(0.4)
+                screenshots.append(make_screenshot("_tmp_desc_2.png"))
 
-            print(f"  ✓ Скриншот описания: {final_path.name}")
-            return screenshot_path
+            result_paths = []
+
+            for idx, full_path in enumerate(screenshots, start=1):
+                img = Image.open(full_path)
+                img_w, img_h = img.size
+
+                if content_container:
+                    rect = self.driver.execute_script("""
+                        var r = arguments[0].getBoundingClientRect();
+                        return {left:r.left, top:r.top, width:r.width, height:r.height};
+                    """, content_container)
+
+                    dpr = self.driver.execute_script("return window.devicePixelRatio || 1;")
+
+                    left = int(rect["left"] * dpr)
+                    top = int(rect["top"] * dpr)
+                    right = int((rect["left"] + rect["width"]) * dpr)
+                    bottom = int((rect["top"] + rect["height"]) * dpr)
+
+                    left = max(0, min(left, img_w - 1))
+                    top = max(0, min(top, img_h - 1))
+                    right = max(left + 1, min(right, img_w))
+                    bottom = max(top + 1, min(bottom, img_h))
+
+                    name = "описание.png" if len(screenshots) == 1 else f"описание_{idx}.png"
+                    final_path = ad_folder / name
+
+                    if right > left and bottom > top:
+                        img.crop((left, top, right, bottom)).save(final_path)
+                    else:
+                        img.save(final_path)
+                else:
+                    name = "описание.png" if len(screenshots) == 1 else f"описание_{idx}.png"
+                    final_path = ad_folder / name
+                    img.save(final_path)
+
+                result_paths.append(str(final_path))
+                full_path.unlink(missing_ok=True)
+
+            if len(result_paths) == 1:
+                print("  ✓ Описание влезло — 1 скриншот")
+                return result_paths[0]
+            else:
+                print("  ✓ Описание длинное — 2 скриншота")
+                return result_paths
 
         except Exception as e:
             print(f"  ✗ Ошибка скриншота описания: {e}")
@@ -910,24 +943,3 @@ class CianParser:
         if self.driver:
             self.driver.quit()
             self.driver = None
-
-
-# Пример использования
-if __name__ == "__main__":
-    # Список URL для парсинга
-    urls = [
-        "https://murmansk.cian.ru/sale/suburban/324476997/?mlSearchSessionGuid=47f5433df030a4e4704c1dcb4b18577e",
-        "https://murmansk.cian.ru/sale/suburban/323419478/?mlSearchSessionGuid=ee65a231cff4cfba6e7bdbfe6863f0ef",# Замените на реальные URL
-    ]
-
-    parser = CianParser(
-        headless=False,  # Установите True для работы в фоновом режиме
-        download_images=True,
-        slow_mode=False
-    )
-
-    try:
-        results = parser.parse_multiple(urls)
-        parser.save_results(results)
-    finally:
-        parser.close()
