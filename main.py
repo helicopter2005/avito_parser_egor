@@ -1,17 +1,18 @@
 import sys
-from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
     QLabel, QMessageBox, QHBoxLayout, QFileDialog,
-    QTableWidget, QTableWidgetItem, QCheckBox
+    QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView
 )
-from PyQt5.QtWidgets import QHeaderView
+
 from selenium.common.exceptions import TimeoutException
 
 from avito_parser import AvitoParser
+from cian_parser import CianParser
 from excel_builder import build_excel
 from word_builder import build_word_with_screenshots
-from PyQt5.QtCore import pyqtSlot
+
 
 
 # =========================
@@ -28,9 +29,54 @@ class ParserWorker(QThread):
         self.urls = urls
         self.parser = None
 
+    # def run(self):
+    #     try:
+    #         self.parser = AvitoParser(
+    #             headless=False,
+    #             slow_mode=True,
+    #             on_captcha=self.on_captcha
+    #         )
+    #
+    #         parsed_data = []
+    #
+    #         for i, url in enumerate(self.urls, 1):
+    #             self.log.emit(f"[{i}/{len(self.urls)}] Парсинг: {url}")
+    #
+    #             url = url.split("?")[0]
+    #
+    #             try:
+    #                 data = self.parser.parse_ad(url)
+    #
+    #                 if data.get("page_not_found"):
+    #                     self.log.emit(f"❌ [{i}] Страница не существует")
+    #                     continue
+    #
+    #             except TimeoutException:
+    #                 self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
+    #                 continue
+    #
+    #             parsed_data.append(data)
+    #
+    #         self.parser.close()
+    #
+    #         result = {
+    #             "rows": parsed_data
+    #         }
+    #
+    #         self.finished.emit(result)
+    #
+    #     except Exception as e:
+    #         self.error.emit(str(e))
+
     def run(self):
         try:
-            self.parser = AvitoParser(
+            self.parserAvito = AvitoParser(
+                headless=False,
+                slow_mode=True,
+                on_captcha=self.on_captcha
+            )
+
+            self.parserCian = CianParser(
                 headless=False,
                 slow_mode=True,
                 on_captcha=self.on_captcha
@@ -38,25 +84,66 @@ class ParserWorker(QThread):
 
             parsed_data = []
 
-            for i, url in enumerate(self.urls, 1):
-                self.log.emit(f"[{i}/{len(self.urls)}] Парсинг: {url}")
+            avito_urls = []
+            cian_urls = []
 
+            for i, url in enumerate(self.urls, 1):
                 url = url.split("?")[0]
 
-                try:
-                    data = self.parser.parse_ad(url)
+                if "avito" in url:
+                    try:
+                        data = self.parserAvito.parse_ad(url)
 
-                    if data.get("page_not_found"):
-                        self.log.emit(f"❌ [{i}] Страница не существует")
+                        if data.get("page_not_found"):
+                            self.log.emit(f"❌ [{i}] Страница не существует")
+                            continue
+                    except TimeoutException:
+                        self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
                         continue
+                    parsed_data.append(data)
 
-                except TimeoutException:
-                    self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
-                    continue
+                elif "cian" in url:
+                    try:
+                        data = self.parserCian.parse_ad(url)
 
-                parsed_data.append(data)
+                        if data.get("page_not_found"):
+                            self.log.emit(f"❌ [{i}] Страница не существует")
+                            continue
+                    except TimeoutException:
+                        self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
+                        continue
+                    parsed_data.append(data)
 
-            self.parser.close()
+            # for i, url in avito_urls:
+            #     try:
+            #         data = self.parserAvito.parse_ad(url)
+            #
+            #         if data.get("page_not_found"):
+            #             self.log.emit(f"❌ [{i}] Страница не существует")
+            #             continue
+            #
+            #     except TimeoutException:
+            #         self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
+            #         continue
+            #
+            #     parsed_data.append(data)
+            #
+            # for i, url in cian_urls:
+            #     try:
+            #         data = self.parserCian.parse_ad(url)
+            #
+            #         if data.get("page_not_found"):
+            #             self.log.emit(f"❌ [{i}] Страница не существует")
+            #             continue
+            #
+            #     except TimeoutException:
+            #         self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
+            #         continue
+            #
+            #     parsed_data.append(data)
+
+            self.parserAvito.close()
+            self.parserCian.close()
 
             result = {
                 "rows": parsed_data
