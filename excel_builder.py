@@ -4,23 +4,6 @@ from openpyxl.styles import Border, Side, Alignment, Font
 from openpyxl.utils import get_column_letter
 from PyQt5.QtWidgets import QMessageBox
 
-
-def extract_price_per_m2(self, price_info: str):
-    if not price_info:
-        return None
-    match = re.search(r'([\d\s]+)\s*₽', price_info)
-    if match:
-        try:
-            if 'за сотку' in price_info:
-                return float(match.group(1).replace(" ", "")) / 100
-            if 'в год' in price_info:
-                return float(match.group(1).replace(" ", "")) / 12
-            return float(match.group(1).replace(" ", ""))
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка в функции price_per_m2", str(e))
-    return None
-
-
 def build_excel(self, data_rows):
     wb = Workbook()
     ws = wb.active
@@ -59,8 +42,6 @@ def build_excel(self, data_rows):
         data = row["data"]
         is_analog = row["is_analog"]
 
-        price_per_m2 = extract_price_per_m2(self, data.get("price_info"))
-
         status_text = (
             "Выбран в качестве аналога"
             if is_analog else
@@ -73,7 +54,7 @@ def build_excel(self, data_rows):
                 data.get("address"),
                 data.get("price"),
                 data.get("area_m2"),
-                price_per_m2,
+                data.get("price_per_m2"),
                 int(data.get("params", {}).get("Этаж")) if str(data.get("params", {}).get("Этаж", "")).isdigit() else None,
                 data.get("params", {}).get("Площадь участка"),
                 data.get("params", {}).get("Материал стен"),
@@ -130,7 +111,7 @@ def build_excel(self, data_rows):
                     analog.get("address"),
                     analog.get("price"),
                     analog.get("area_m2"),
-                    extract_price_per_m2(self, analog.get("price_info")),
+                    analog.get("price_per_m2"),
                     int(analog.get("params", {}).get("Этаж")) if str(analog.get("params", {}).get("Этаж", "")).isdigit() else None,
                     analog.get("params", {}).get("Площадь участка"),
                     analog.get("url"),
