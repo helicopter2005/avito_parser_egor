@@ -34,7 +34,7 @@ def resource_path(relative_path):
 class CianParser:
     """Парсер объявлений недвижимости Циан"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты_Циан", slow_mode=False, on_captcha=None):
+    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
         self.download_images = download_images
         self.images_dir = Path(images_dir)
         self.driver = None
