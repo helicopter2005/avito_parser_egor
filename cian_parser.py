@@ -116,7 +116,7 @@ class CianParser:
         """Ожидание загрузки страницы Циан"""
         try:
             WebDriverWait(self.driver, timeout).until(
-                lambda d: d.execute_script("return document.readyState") in ["interactive", "complete"]
+                lambda d: d.execute_script("return document.readyState") in ["complete"]
             )
             time.sleep(2)
             return True
@@ -761,7 +761,6 @@ class CianParser:
         print(f"\nПарсинг: {url}")
 
         self.driver.get(url)
-        time.sleep(2)
 
         # Проверяем наличие капчи или блокировки
         page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
