@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
@@ -134,7 +135,16 @@ class AvitoApp(QWidget):
         self.parserAvito = None
         self.parserCian = None
 
+        self.is_trial = True  # False для полной версии
+        self.trial_limit = 2
+        self.parsed_count = self._load_parsed_count()
+
         layout = QVBoxLayout(self)
+
+        if self.is_trial:
+            remaining = max(0, self.trial_limit - self.parsed_count)
+            self.trial_label = QLabel(f"🔓Пробная версия: осталось {remaining} из {self.trial_limit} объявлений")
+            layout.addWidget(self.trial_label)
 
         # ---------- Таблица ссылок ----------
         self.table = QTableWidget(0, 2)
@@ -259,15 +269,39 @@ class AvitoApp(QWidget):
 
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
-            widget = self.table.cellWidget(row, 1)
-            checkbox = widget.layout().itemAt(0).widget()
-
             if item and item.text().strip():
                 urls.append(item.text().strip())
 
         if not urls:
             QMessageBox.warning(self, "Ошибка", "Добавьте хотя бы одну ссылку")
             return
+
+        # ПРОВЕРКА ТРИАЛА
+        if self.is_trial:
+            remaining = self.trial_limit - self.parsed_count
+
+            if remaining <= 0:
+                QMessageBox.warning(
+                    self,
+                    "Триал исчерпан",
+                    f"Вы исчерпали лимит пробной версии ({self.trial_limit} объявлений).\n"
+                    "Для продолжения работы приобретите полную версию."
+                )
+                return
+
+            if len(urls) > remaining:
+                reply = QMessageBox.question(
+                    self,
+                    "Превышен лимит",
+                    f"У вас осталось {remaining} объявлений.\n"
+                    f"Распарсить только первые {remaining}?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+
+                if reply == QMessageBox.Yes:
+                    urls = urls[:remaining]
+                else:
+                    return
 
         self.start_btn.setEnabled(False)
         self.log.setRowCount(0)
@@ -303,7 +337,6 @@ class AvitoApp(QWidget):
     def on_finished(self, result):
         self.start_btn.setEnabled(True)
 
-        # Сохраняем парсеры из worker'а для переиспользования
         if self.worker:
             self.parserAvito = self.worker.parserAvito
             self.parserCian = self.worker.parserCian
@@ -316,6 +349,12 @@ class AvitoApp(QWidget):
 
         self.export_excel_btn.setEnabled(True)
         self.export_word_btn.setEnabled(True)
+
+        # Обновление триала
+        if self.is_trial and len(self.parsed_rows) > 0:
+            self.parsed_count += len(self.parsed_rows)
+            self._save_parsed_count()
+            self._update_trial_label()
 
         QMessageBox.information(self, "Готово", "Парсинг завершён. Данные готовы к экспорту.")
 
@@ -371,6 +410,32 @@ class AvitoApp(QWidget):
             QMessageBox.information(self, "Готово", "Word файл сохранён")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
+
+    def _load_parsed_count(self):
+        """Загрузка счетчика распарсенных объявлений"""
+        try:
+            if os.path.exists("trial_count.txt"):
+                with open("trial_count.txt", "r") as f:
+                    return int(f.read().strip())
+        except:
+            pass
+        return 0
+
+    def _save_parsed_count(self):
+        """Сохранение счетчика распарсенных объявлений"""
+        try:
+            with open("trial_count.txt", "w") as f:
+                f.write(str(self.parsed_count))
+        except Exception as e:
+            print(f"Ошибка сохранения счетчика: {e}")
+
+    def _update_trial_label(self):
+        """Обновление лейбла с информацией о триале"""
+        if not self.is_trial:
+            return
+
+        remaining = max(0, self.trial_limit - self.parsed_count)
+        self.trial_label.setText(f"🔓 Пробная версия: осталось {remaining} из {self.trial_limit} объявлений")
 
 
 # =========================
