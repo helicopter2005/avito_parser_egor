@@ -9,6 +9,10 @@ from PyQt5.QtWidgets import (
 
 from selenium.common.exceptions import TimeoutException
 
+import hashlib
+import uuid
+import base64
+
 from avito_parser import AvitoParser
 from cian_parser import CianParser
 from excel_builder import build_excel
@@ -126,7 +130,7 @@ class ParserWorker(QThread):
 class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Парсер объявлений Авито (оценка)")
+        self.setWindowTitle("Парсер объявлений (оценка)")
         self.resize(900, 600)
 
         self.parsed_rows = []
@@ -136,7 +140,7 @@ class AvitoApp(QWidget):
         self.parserCian = None
 
         self.is_trial = True  # False для полной версии
-        self.trial_limit = 2
+        self.trial_limit = 10
         self.parsed_count = self._load_parsed_count()
 
         layout = QVBoxLayout(self)
@@ -411,23 +415,54 @@ class AvitoApp(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
 
-    def _load_parsed_count(self):
-        """Загрузка счетчика распарсенных объявлений"""
+    def _get_machine_id(self):
+        """Получение уникального ID машины"""
         try:
-            if os.path.exists("trial_count.txt"):
-                with open("trial_count.txt", "r") as f:
-                    return int(f.read().strip())
+            machine_id = str(uuid.getnode())
+            return hashlib.md5(machine_id.encode()).hexdigest()[:16]
+        except:
+            return "default00machine"
+
+    def _encrypt_data(self, data):
+        """Простое шифрование данных"""
+        machine_id = self._get_machine_id()
+        # XOR с machine_id
+        encrypted = ''.join(chr(ord(c) ^ ord(machine_id[i % len(machine_id)])) for i, c in enumerate(str(data)))
+        # Base64 для безопасного хранения
+        return base64.b64encode(encrypted.encode()).decode()
+
+    def _decrypt_data(self, encrypted_data):
+        """Дешифрование данных"""
+        try:
+            machine_id = self._get_machine_id()
+            # Декодируем из Base64
+            decoded = base64.b64decode(encrypted_data.encode()).decode()
+            # XOR обратно
+            decrypted = ''.join(chr(ord(c) ^ ord(machine_id[i % len(machine_id)])) for i, c in enumerate(decoded))
+            return int(decrypted)
+        except:
+            return 0
+
+    def _load_parsed_count(self):
+        """Загрузка счетчика из файла"""
+        try:
+            # Технический файл с непонятным названием
+            if os.path.exists("app_cache_tmp.dat"):
+                with open("app_cache_tmp.dat", 'r') as f:
+                    encrypted = f.read().strip()
+                    return self._decrypt_data(encrypted)
         except:
             pass
         return 0
 
     def _save_parsed_count(self):
-        """Сохранение счетчика распарсенных объявлений"""
+        """Сохранение счетчика в файл"""
         try:
-            with open("trial_count.txt", "w") as f:
-                f.write(str(self.parsed_count))
+            encrypted = self._encrypt_data(self.parsed_count)
+            with open("app_cache_tmp.dat", 'w') as f:
+                f.write(encrypted)
         except Exception as e:
-            print(f"Ошибка сохранения счетчика: {e}")
+            print(f"Ошибка сохранения: {e}")
 
     def _update_trial_label(self):
         """Обновление лейбла с информацией о триале"""
