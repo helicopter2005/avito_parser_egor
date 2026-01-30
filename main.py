@@ -24,30 +24,53 @@ class ParserWorker(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, urls):
+    def __init__(self, urls, parserAvito=None, parserCian=None):
         super().__init__()
         self.urls = urls
-        self.parserAvito = None
-        self.parserCian = None
+        self.parserAvito = parserAvito
+        self.parserCian = parserCian
 
     def run(self):
         try:
-            self.parserAvito = AvitoParser(
-                headless=False,
-                slow_mode=True,
-                on_captcha=self.on_captcha
-            )
+            # Проверяем и переиспользуем или создаем новый парсер Avito
+            if self.parserAvito is None or self.parserAvito.driver is None:
+                self.parserAvito = AvitoParser(
+                    headless=False,
+                    slow_mode=True,
+                    on_captcha=self.on_captcha
+                )
+            else:
+                # Проверяем, что браузер еще жив
+                try:
+                    self.parserAvito.driver.current_url
+                except:
+                    self.log.emit("ℹ Браузер Avito был закрыт, открываем новый...")
+                    self.parserAvito = AvitoParser(
+                        headless=False,
+                        slow_mode=True,
+                        on_captcha=self.on_captcha
+                    )
 
-            self.parserCian = CianParser(
-                headless=False,
-                slow_mode=True,
-                on_captcha=self.on_captcha
-            )
+            # Проверяем и переиспользуем или создаем новый парсер Cian
+            if self.parserCian is None or self.parserCian.driver is None:
+                self.parserCian = CianParser(
+                    headless=False,
+                    slow_mode=True,
+                    on_captcha=self.on_captcha
+                )
+            else:
+                # Проверяем, что браузер еще жив
+                try:
+                    self.parserCian.driver.current_url
+                except:
+                    self.log.emit("ℹ Браузер Cian был закрыт, открываем новый...")
+                    self.parserCian = CianParser(
+                        headless=False,
+                        slow_mode=True,
+                        on_captcha=self.on_captcha
+                    )
 
             parsed_data = []
-
-            avito_urls = []
-            cian_urls = []
 
             for i, url in enumerate(self.urls, 1):
                 url = url.split("?")[0]
@@ -75,9 +98,6 @@ class ParserWorker(QThread):
                         self.log.emit(f"❌ [{i}] Таймаут загрузки страницы")
                         continue
                     parsed_data.append(data)
-
-            self.parserAvito.close()
-            self.parserCian.close()
 
             result = {
                 "rows": parsed_data
@@ -111,6 +131,9 @@ class AvitoApp(QWidget):
         self.parsed_rows = []
         self.excel_workbook = None
 
+        self.parserAvito = None
+        self.parserCian = None
+
         layout = QVBoxLayout(self)
 
         # ---------- Таблица ссылок ----------
@@ -131,6 +154,7 @@ class AvitoApp(QWidget):
         self.continue_btn = QPushButton("⏯ Продолжить парсинг")
         self.export_excel_btn = QPushButton("Экспорт Excel")
         self.export_word_btn = QPushButton("Экспорт Word")
+        self.clear_btn = QPushButton("🗑 Очистить поля")
 
         self.continue_btn.setEnabled(False)
         self.export_excel_btn.setEnabled(False)
@@ -138,7 +162,7 @@ class AvitoApp(QWidget):
 
         # ---------- Лог ----------
         self.log = QTableWidget(0, 1)
-        self.log.setHorizontalHeaderLabels(["Лог"])
+        self.log.setHorizontalHeaderLabels([""])
         self.log.horizontalHeader().setStretchLastSection(True)
 
         btns = QHBoxLayout()
@@ -147,11 +171,12 @@ class AvitoApp(QWidget):
         btns.addWidget(self.continue_btn)
         btns.addWidget(self.export_excel_btn)
         btns.addWidget(self.export_word_btn)
+        btns.addWidget(self.clear_btn)
 
-        layout.addWidget(QLabel("Ссылки на объявления с Авито:"))
+        layout.addWidget(QLabel("Ссылки на объявления:"))
         layout.addWidget(self.table)
         layout.addLayout(btns)
-        layout.addWidget(QLabel("Вывод:"))
+        layout.addWidget(QLabel("Журнал:"))
         layout.addWidget(self.log)
 
         self.add_btn.clicked.connect(self.add_row)
@@ -159,6 +184,7 @@ class AvitoApp(QWidget):
         self.continue_btn.clicked.connect(self.continue_parsing)
         self.export_excel_btn.clicked.connect(self.export_excel)
         self.export_word_btn.clicked.connect(self.export_word)
+        self.clear_btn.clicked.connect(self.clear_fields)
 
         self.worker = None
 
@@ -182,6 +208,17 @@ class AvitoApp(QWidget):
 
         self.table.setCellWidget(row, 1, container)
 
+    def clear_fields(self):
+        """Очистка всех полей ввода и возврат к 5 строкам"""
+        # Удаляем все строки
+        self.table.setRowCount(0)
+
+        # Добавляем обратно 5 пустых строк
+        for _ in range(5):
+            self.add_row()
+
+        self.log_msg("✓ Поля очищены")
+
     def log_msg(self, text):
         row = self.log.rowCount()
         self.log.insertRow(row)
@@ -202,6 +239,14 @@ class AvitoApp(QWidget):
             })
 
         return rows
+
+    def closeEvent(self, event):
+        """Закрытие браузеров при выходе из приложения"""
+        if self.parserAvito:
+            self.parserAvito.close()
+        if self.parserCian:
+            self.parserCian.close()
+        event.accept()
 
     # ---------- Parsing ----------
     def start_parsing(self):
@@ -227,7 +272,7 @@ class AvitoApp(QWidget):
         self.start_btn.setEnabled(False)
         self.log.setRowCount(0)
 
-        self.worker = ParserWorker(urls)
+        self.worker = ParserWorker(urls, self.parserAvito, self.parserCian)
         self.worker.log.connect(self.log_msg)
         self.worker.captcha_detected.connect(self.on_captcha)
         self.worker.finished.connect(self.on_finished)
@@ -257,6 +302,11 @@ class AvitoApp(QWidget):
 
     def on_finished(self, result):
         self.start_btn.setEnabled(True)
+
+        # Сохраняем парсеры из worker'а для переиспользования
+        if self.worker:
+            self.parserAvito = self.worker.parserAvito
+            self.parserCian = self.worker.parserCian
 
         if result is None:
             QMessageBox.information(self, "Готово", "Нет успешно обработанных объявлений")
