@@ -388,9 +388,6 @@ class AvitoApp(QWidget):
         msg_box.setIcon(QMessageBox.Information)
         msg_box.setWindowFlags(Qt.WindowType(msg_box.windowFlags() | Qt.WindowStaysOnTopHint))
         msg_box.exec_()
-        # Обновление триала
-
-        QMessageBox.information(self, "Готово", "Парсинг завершён. Данные готовы к экспорту.")
 
     def on_error(self, msg):
         self.start_btn.setEnabled(True)
