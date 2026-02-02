@@ -372,12 +372,12 @@ class AvitoApp(QWidget):
             QMessageBox.information(self, "Готово", "Нет успешно обработанных объявлений")
             return
 
+        self.parsed_rows = result["rows"]
+
         if self.is_trial and len(self.parsed_rows) > 0:
             self.parsed_count += len(self.parsed_rows)
             self._save_parsed_count()
             self._update_trial_label()
-
-        self.parsed_rows = result["rows"]
 
         self.export_excel_btn.setEnabled(True)
         self.export_word_btn.setEnabled(True)
@@ -442,6 +442,26 @@ class AvitoApp(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
 
+    def _get_cache_dir(self):
+        """Определение папки для хранения файла счетчика"""
+        # Для PyInstaller - папка _internal рядом с exe
+        if getattr(sys, 'frozen', False):
+            # Путь к exe файлу
+            app_dir = os.path.dirname(sys.executable)
+            cache_dir = os.path.join(app_dir, '_internal')
+        else:
+            # Для разработки - текущая директория
+            cache_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Создаем папку, если её нет
+        os.makedirs(cache_dir, exist_ok=True)
+        return cache_dir
+
+    def _get_cache_file_path(self):
+        """Получение полного пути к файлу кэша"""
+        cache_dir = self._get_cache_dir()
+        return os.path.join(cache_dir, "app_cache_tmp.dat")
+
     def _get_machine_id(self):
         """Получение уникального ID машины"""
         try:
@@ -473,20 +493,21 @@ class AvitoApp(QWidget):
     def _load_parsed_count(self):
         """Загрузка счетчика из файла"""
         try:
-            # Технический файл с непонятным названием
-            if os.path.exists("app_cache_tmp.dat"):
-                with open("app_cache_tmp.dat", 'r') as f:
+            cache_file = self._get_cache_file_path()
+            if os.path.exists(cache_file):
+                with open(cache_file, 'r') as f:
                     encrypted = f.read().strip()
                     return self._decrypt_data(encrypted)
-        except:
-            pass
+        except Exception as e:
+            print(f"Ошибка загрузки счетчика: {e}")
         return 0
 
     def _save_parsed_count(self):
         """Сохранение счетчика в файл"""
         try:
+            cache_file = self._get_cache_file_path()
             encrypted = self._encrypt_data(self.parsed_count)
-            with open("app_cache_tmp.dat", 'w') as f:
+            with open(cache_file, 'w') as f:
                 f.write(encrypted)
         except Exception as e:
             print(f"Ошибка сохранения: {e}")
