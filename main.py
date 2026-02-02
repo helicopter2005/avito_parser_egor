@@ -337,7 +337,12 @@ class AvitoApp(QWidget):
         self.export_excel_btn.setEnabled(True)
         self.export_word_btn.setEnabled(True)
 
-        QMessageBox.information(self, "Готово", "Парсинг завершён. Данные готовы к экспорту.")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Готово")
+        msg_box.setText("Парсинг завершён. Данные готовы к экспорту.")
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowFlags(Qt.WindowType(msg_box.windowFlags() | Qt.WindowStaysOnTopHint))
+        msg_box.exec_()
 
     def on_error(self, msg):
         self.start_btn.setEnabled(True)

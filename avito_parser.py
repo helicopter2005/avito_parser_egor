@@ -389,48 +389,30 @@ class AvitoParser:
             pass
 
     def _take_address_screenshot(self, address_ad):
-        """Скриншот блока с адресом и картой"""
+        """Скриншот блока с картой"""
         try:
             driver = self.driver
 
+            # Удаляем калькулятор ипотеки если есть
+            try:
+                mortgage_calc = driver.find_element(By.CSS_SELECTOR, "div#MortgageCalculatorNode")
+                driver.execute_script("arguments[0].remove();", mortgage_calc)
+                print("  ℹ Калькулятор ипотеки удалён")
+                time.sleep(0.2)
+            except Exception:
+                pass
+
             # Ищем блок с картой
-            map_element = driver.find_element(By.CSS_SELECTOR, "div[class*='item-map']")
+            map_element = driver.find_element(By.CSS_SELECTOR, "div[class*='item-view-map']")
 
             # Прокручиваем к карте
             driver.execute_script(
-                "arguments[0].scrollIntoView({block:'start'});",
+                "arguments[0].scrollIntoView({block:'center'});",
                 map_element
             )
             time.sleep(0.3)
 
-            # Прокручиваем чуть вверх для захвата заголовка
-            driver.execute_script("window.scrollBy(0, -100);")
-            time.sleep(0.2)
-
-            # Проверяем, виден ли блок описания полностью
-            description_fully_visible = False
-            try:
-                description = driver.find_element(
-                    By.CSS_SELECTOR,
-                    "[data-marker='item-view/item-description']"
-                )
-
-                desc_rect = driver.execute_script("""
-                    var r = arguments[0].getBoundingClientRect();
-                    return {top: r.top, bottom: r.bottom};
-                """, description)
-
-                # Проверяем, что и верх и низ описания видны на экране
-                viewport_height = driver.execute_script("return window.innerHeight;")
-                description_fully_visible = (desc_rect["top"] >= 0 and
-                                             desc_rect["bottom"] <= viewport_height)
-
-                print(f"  ℹ Описание {'полностью видно' if description_fully_visible else 'обрезано'}")
-
-            except Exception:
-                pass
-
-            # Получаем контейнер контента
+            # Получаем контейнер контента (для удаления рекламы)
             content_container = driver.find_element(
                 By.CSS_SELECTOR,
                 "div[class*='item-view-content']"
@@ -457,11 +439,11 @@ class AvitoParser:
             full_path = ad_folder / "_tmp_address.png"
             driver.save_screenshot(str(full_path))
 
-            # Получаем координаты контейнера
+            # Получаем координаты БЛОКА КАРТЫ (а не всего контейнера!)
             rect = driver.execute_script("""
                 var r = arguments[0].getBoundingClientRect();
                 return {left:r.left, top:r.top, width:r.width, height:r.height};
-            """, content_container)
+            """, map_element)
 
             dpr = driver.execute_script("return window.devicePixelRatio || 1;")
 
@@ -487,13 +469,11 @@ class AvitoParser:
             full_path.unlink(missing_ok=True)
 
             print(f"  ✓ Скриншот (адрес): {final_path.name}")
-
-            # Возвращаем путь к скриншоту и флаг видимости описания
-            return screenshot_path, description_fully_visible
+            return screenshot_path
 
         except Exception as e:
             print(f"  ✗ Ошибка скриншота адреса: {e}")
-            return None, False
+            return None
 
     def _take_bottom_screenshot(self, address_ad):
         """
@@ -733,6 +713,16 @@ class AvitoParser:
                 pass
         return None
 
+    def _remove_mortgage_calculator(self):
+        """Удаляет калькулятор ипотеки со страницы"""
+        try:
+            mortgage_calc = self.driver.find_element(By.CSS_SELECTOR, "div#MortgageCalculatorNode")
+            self.driver.execute_script("arguments[0].remove();", mortgage_calc)
+            print("  ℹ Калькулятор ипотеки удалён")
+            time.sleep(0.2)
+        except Exception:
+            pass
+
     def parse_ad(self, url):
         if not self.driver:
             self._setup_driver()
@@ -786,6 +776,7 @@ class AvitoParser:
         getHistory = self._wait_for_page_load()
 
         self.driver.execute_script("document.body.style.zoom='80%'")
+        self._remove_mortgage_calculator()
 
         data = {
             "id": ad_id,
@@ -922,12 +913,10 @@ class AvitoParser:
             else:
                 data["price"] = "Введите стоимость аренды вручную"
 
-        address_screenshot, desc_visible = self._take_address_screenshot(
+        address_screenshot = self._take_address_screenshot(
             data['title'] + data['address'].replace("\n", " "))
 
-        bottom_screenshot = ""
-        if not desc_visible:
-            bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
+        bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         data["screenshots"] = {
             "top": top_screenshot,
