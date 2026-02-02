@@ -727,9 +727,7 @@ class CianParser:
 
             for item in items:
                 title = item.find_element(By.TAG_NAME, "span").text.strip()
-                print(title)
                 value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
-                print(value)
                 if "Цена за метр" in title:
                     if 'в год' in value:
                         value = self._extract_num(value) / 12
