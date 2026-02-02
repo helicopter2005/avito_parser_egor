@@ -26,6 +26,7 @@ from word_builder import build_word_with_screenshots
 class ParserWorker(QThread):
     log = pyqtSignal(str)
     captcha_detected = pyqtSignal()
+    auth_required = pyqtSignal()
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
@@ -61,7 +62,8 @@ class ParserWorker(QThread):
                 self.parserCian = CianParser(
                     headless=False,
                     slow_mode=True,
-                    on_captcha=self.on_captcha
+                    on_captcha=self.on_captcha,
+                    on_auth=self.on_auth
                 )
             else:
                 # Проверяем, что браузер еще жив
@@ -72,7 +74,8 @@ class ParserWorker(QThread):
                     self.parserCian = CianParser(
                         headless=False,
                         slow_mode=True,
-                        on_captcha=self.on_captcha
+                        on_captcha=self.on_captcha,
+                        on_auth=self.on_auth
                     )
 
             parsed_data = []
@@ -115,6 +118,9 @@ class ParserWorker(QThread):
 
     def on_captcha(self):
         self.captcha_detected.emit()
+
+    def on_auth(self):
+        self.auth_required.emit()
 
     @pyqtSlot()
     def continue_after_captcha(self):
@@ -273,6 +279,9 @@ class AvitoApp(QWidget):
 
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
+            widget = self.table.cellWidget(row, 1)
+            checkbox = widget.layout().itemAt(0).widget()
+
             if item and item.text().strip():
                 urls.append(item.text().strip())
 
@@ -313,20 +322,34 @@ class AvitoApp(QWidget):
         self.worker = ParserWorker(urls, self.parserAvito, self.parserCian)
         self.worker.log.connect(self.log_msg)
         self.worker.captcha_detected.connect(self.on_captcha)
+        self.worker.auth_required.connect(self.on_auth)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
         self.worker.start()
 
     def on_captcha(self):
-        self.log_msg("⚠ Обнаружена капча или требуется авторизация")
+        self.log_msg("⚠ Обнаружена капча")
         self.continue_btn.setEnabled(True)
 
-        QMessageBox.warning(
-            self,
-            "Требуется действие",
-            "Решите капчу или авторизуйтесь в браузере,\n"
-            "затем нажмите «Продолжить парсинг»"
-        )
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Требуется действие")
+        msg.setText("Решите капчу или авторизуйтесь в браузере,\n"
+                    "затем нажмите «Продолжить парсинг»")
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowFlags(Qt.WindowType(msg.windowFlags() | Qt.WindowStaysOnTopHint))  # НОВАЯ СТРОКА
+        msg.exec_()
+
+    def on_auth(self):
+        self.log_msg("⚠ Требуется авторизация")
+        self.continue_btn.setEnabled(True)
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Требуется авторизация")
+        msg.setText("Пожалуйста, авторизуйтесь в браузере,\n"
+                    "затем нажмите «Продолжить парсинг»")
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowFlags(Qt.WindowType(msg.windowFlags() | Qt.WindowStaysOnTopHint))  # НОВАЯ СТРОКА
+        msg.exec_()
 
     def continue_parsing(self):
         if self.worker:
@@ -349,16 +372,23 @@ class AvitoApp(QWidget):
             QMessageBox.information(self, "Готово", "Нет успешно обработанных объявлений")
             return
 
+        if self.is_trial and len(self.parsed_rows) > 0:
+            self.parsed_count += len(self.parsed_rows)
+            self._save_parsed_count()
+            self._update_trial_label()
+
         self.parsed_rows = result["rows"]
 
         self.export_excel_btn.setEnabled(True)
         self.export_word_btn.setEnabled(True)
 
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Готово")
+        msg_box.setText("Парсинг завершён. Данные готовы к экспорту.")
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowFlags(Qt.WindowType(msg_box.windowFlags() | Qt.WindowStaysOnTopHint))
+        msg_box.exec_()
         # Обновление триала
-        if self.is_trial and len(self.parsed_rows) > 0:
-            self.parsed_count += len(self.parsed_rows)
-            self._save_parsed_count()
-            self._update_trial_label()
 
         QMessageBox.information(self, "Готово", "Парсинг завершён. Данные готовы к экспорту.")
 

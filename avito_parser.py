@@ -211,8 +211,6 @@ class AvitoParser:
             hover_element
         )
 
-        ActionChains(self.driver).move_to_element(hover_element).perform()
-
         try:
             driver = self.driver
             content_container = driver.find_element(
@@ -234,6 +232,10 @@ class AvitoParser:
 
             except Exception:
                 pass
+
+            ActionChains(self.driver).move_to_element(hover_element).perform()
+
+            time.sleep(1)
 
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
@@ -387,6 +389,93 @@ class AvitoParser:
             return screenshot_path
         except:
             pass
+
+    def _take_address_screenshot(self, address_ad):
+        """Скриншот блока с картой"""
+        try:
+            driver = self.driver
+
+            # Удаляем калькулятор ипотеки если есть
+            try:
+                mortgage_calc = driver.find_element(By.CSS_SELECTOR, "div#MortgageCalculatorNode")
+                driver.execute_script("arguments[0].remove();", mortgage_calc)
+                print("  ℹ Калькулятор ипотеки удалён")
+                time.sleep(0.2)
+            except Exception:
+                pass
+
+            # Ищем блок с картой
+            map_element = driver.find_element(By.CSS_SELECTOR, "div[class*='item-view-map']")
+
+            # Прокручиваем к карте
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center'});",
+                map_element
+            )
+            time.sleep(0.3)
+
+            # Получаем контейнер контента (для удаления рекламы)
+            content_container = driver.find_element(
+                By.CSS_SELECTOR,
+                "div[class*='item-view-content']"
+            )
+
+            # Удаляем рекламу
+            try:
+                ads_selectors = [
+                    "div[class*='item-view-ads']",
+                    "div[class*='ads']",
+                    "div[data-marker*='ads']"
+                ]
+                for selector in ads_selectors:
+                    ads = content_container.find_elements(By.CSS_SELECTOR, selector)
+                    for ad in ads:
+                        driver.execute_script("arguments[0].remove();", ad)
+            except Exception:
+                pass
+
+            ad_folder = self.images_dir / str(address_ad)
+            ad_folder.mkdir(parents=True, exist_ok=True)
+
+            # Делаем полный скриншот
+            full_path = ad_folder / "_tmp_address.png"
+            driver.save_screenshot(str(full_path))
+
+            # Получаем координаты БЛОКА КАРТЫ (а не всего контейнера!)
+            rect = driver.execute_script("""
+                var r = arguments[0].getBoundingClientRect();
+                return {left:r.left, top:r.top, width:r.width, height:r.height};
+            """, map_element)
+
+            dpr = driver.execute_script("return window.devicePixelRatio || 1;")
+
+            left = int(rect["left"] * dpr)
+            top = int(rect["top"] * dpr)
+            right = int((rect["left"] + rect["width"]) * dpr)
+            bottom = int((rect["top"] + rect["height"]) * dpr)
+
+            img = Image.open(full_path)
+            img_w, img_h = img.size
+
+            # Защита от выхода за границы
+            left = max(0, left)
+            top = max(0, top)
+            right = min(img_w, right)
+            bottom = min(img_h, bottom)
+
+            # Сохраняем обрезанный скриншот
+            final_path = ad_folder / "адрес.png"
+            img.crop((left, top, right, bottom)).save(final_path)
+            screenshot_path = str(final_path)
+
+            full_path.unlink(missing_ok=True)
+
+            print(f"  ✓ Скриншот (адрес): {final_path.name}")
+            return screenshot_path
+
+        except Exception as e:
+            print(f"  ✗ Ошибка скриншота адреса: {e}")
+            return None
 
     def _take_bottom_screenshot(self, address_ad):
         """
@@ -626,6 +715,16 @@ class AvitoParser:
                 pass
         return None
 
+    def _remove_mortgage_calculator(self):
+        """Удаляет калькулятор ипотеки со страницы"""
+        try:
+            mortgage_calc = self.driver.find_element(By.CSS_SELECTOR, "div#MortgageCalculatorNode")
+            self.driver.execute_script("arguments[0].remove();", mortgage_calc)
+            print("  ℹ Калькулятор ипотеки удалён")
+            time.sleep(0.2)
+        except Exception:
+            pass
+
     def parse_ad(self, url):
         if not self.driver:
             self._setup_driver()
@@ -679,6 +778,7 @@ class AvitoParser:
         getHistory = self._wait_for_page_load()
 
         self.driver.execute_script("document.body.style.zoom='80%'")
+        self._remove_mortgage_calculator()
 
         data = {
             "id": ad_id,
@@ -815,9 +915,16 @@ class AvitoParser:
             else:
                 data["price"] = "Введите стоимость аренды вручную"
 
-        # Нижний скриншот
+        address_screenshot = self._take_address_screenshot(
+            data['title'] + data['address'].replace("\n", " "))
+
         bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
-        data["screenshots"] = {"top": top_screenshot, "bottom": bottom_screenshot}
+
+        data["screenshots"] = {
+            "top": top_screenshot,
+            "bottom": bottom_screenshot,
+            "address": address_screenshot
+        }
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")

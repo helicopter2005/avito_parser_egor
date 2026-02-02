@@ -34,7 +34,7 @@ def resource_path(relative_path):
 class CianParser:
     """Парсер объявлений недвижимости Циан"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
+    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None, on_auth=None):
         self.download_images = download_images
         self.images_dir = Path(images_dir)
         self.driver = None
@@ -42,6 +42,7 @@ class CianParser:
         self.slow_mode = slow_mode
         self.slow_delay = 0.4
         self.on_captcha = on_captcha
+        self.on_auth = on_auth
         self._wait_for_user = False
         self.browser_type = None
 
@@ -708,8 +709,22 @@ class CianParser:
             price_type = "м²/месяц"
         elif "год" in price_text:
             price_type = "год"
+            try:
+                price /= 12
+            except:
+                pass
 
         return price, price_type
+
+    def _extract_num(self, text):
+        text = text.replace("²", "")
+        num = ""
+        for i, c in enumerate(text):
+            if c.isdigit():
+                num += c
+            elif i != 0 and text[i-1].isdigit() and c == '.':
+                num += c
+        return float(num)
 
     def _parse_price_per_m2(self):
         try:
@@ -717,15 +732,21 @@ class CianParser:
 
             for item in items:
                 title = item.find_element(By.TAG_NAME, "span").text.strip()
-                print(item)
+                value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
                 if "Цена за метр" in title:
-                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
-                    value = value.replace("₽/м²", "").replace(" ", "")
-                    return float(value)
+                    if 'в год' in value:
+                        value = self._extract_num(value) / 12
+                    elif "в месяц" in value:
+                        value = self._extract_num(value)
+                    else:
+                        value = float(value.replace("₽/м²", "").replace("₽", "").replace(" ", ""))
+                    return value
                 elif "Цена за сотку" in title:
-                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
-                    value = value.replace("₽/сот.", "").replace(" ", "")
-                    return float(value) / 100
+                    value = self._extract_num(value)
+                    return value / 100
+                elif "Цена за гектар" in title:
+                    value = self._extract_num(value)
+                    return value / 10000
 
             return None
 
@@ -822,7 +843,11 @@ class CianParser:
             self._wait_for_user = True
 
             if self.on_captcha:
-                self.on_captcha()
+                # ЗАМЕНЯЕМ НА:
+                if hasattr(self, 'on_auth') and self.on_auth:
+                    self.on_auth()
+                else:
+                    self.on_captcha()
 
             while self._wait_for_user:
                 time.sleep(0.3)
@@ -915,6 +940,14 @@ class CianParser:
                     break
                 except:
                     pass
+        if data["params"].get("Площади"):
+            try:
+                area_text = data["params"]['Площади']
+                area_value = self._extract_num(area_text.split('–')[0])
+                data["area_m2"] = area_value
+            except:
+                pass
+
 
         # Извлекаем этаж
         if data["params"].get("Этаж"):
