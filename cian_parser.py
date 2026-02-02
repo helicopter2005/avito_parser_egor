@@ -711,21 +711,39 @@ class CianParser:
 
         return price, price_type
 
+    def _extract_num(self, text):
+        text = text.replace("²", "")
+        num = ""
+        for i, c in enumerate(text):
+            if c.isdigit():
+                num += c
+            elif i != 0 and text[i-1].isdigit() and c == '.':
+                num += c
+        return float(num)
+
     def _parse_price_per_m2(self):
         try:
             items = self.driver.find_elements(By.CSS_SELECTOR, "[data-name='OfferFactItem']")
 
             for item in items:
                 title = item.find_element(By.TAG_NAME, "span").text.strip()
-                print(item)
+                print(title)
+                value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
+                print(value)
                 if "Цена за метр" in title:
-                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
-                    value = value.replace("₽/м²", "").replace(" ", "")
-                    return float(value)
+                    if 'в год' in value:
+                        value = self._extract_num(value) / 12
+                    elif "в месяц" in value:
+                        value = self._extract_num(value)
+                    else:
+                        value = float(value.replace("₽/м²", "").replace("₽", "").replace(" ", ""))
+                    return value
                 elif "Цена за сотку" in title:
-                    value = item.find_elements(By.TAG_NAME, "span")[1].text.strip()
-                    value = value.replace("₽/сот.", "").replace(" ", "")
-                    return float(value) / 100
+                    value = self._extract_num(value)
+                    return value / 100
+                elif "Цена за гектар" in title:
+                    value = self._extract_num(value)
+                    return value * 10000
 
             return None
 
