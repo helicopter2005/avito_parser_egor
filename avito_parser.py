@@ -211,8 +211,6 @@ class AvitoParser:
             hover_element
         )
 
-        ActionChains(self.driver).move_to_element(hover_element).perform()
-
         try:
             driver = self.driver
             content_container = driver.find_element(
@@ -234,6 +232,10 @@ class AvitoParser:
 
             except Exception:
                 pass
+
+            ActionChains(self.driver).move_to_element(hover_element).perform()
+
+            time.sleep(1)
 
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
