@@ -63,6 +63,7 @@ def build_word_with_screenshots(data_rows, output_path):
         if 'avito' in url:
             price_history_img = os.path.join(screenshots_dir, "история цены.png")
             description_img = os.path.join(screenshots_dir, 'описание.png')
+            address_img = os.path.join(screenshots_dir, "адрес.png")
             publish_date_img = os.path.join(screenshots_dir, "дата_публикации.png")
             titul_img = os.path.join(screenshots_dir, "титул.png")
 
@@ -75,6 +76,13 @@ def build_word_with_screenshots(data_rows, output_path):
                 run.add_picture(price_history_img, width=Pt(500))
                 set_tnr_12(p_img1)
 
+            if os.path.exists(address_img):
+                p_img2 = doc.add_paragraph()
+                p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p_img2.add_run()
+                run.add_picture(address_img, width=Pt(500))
+                set_tnr_12(p_img2)
+
             if os.path.exists(titul_img):
                 p_img3 = doc.add_paragraph()
                 p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -83,18 +91,18 @@ def build_word_with_screenshots(data_rows, output_path):
                 set_tnr_12(p_img3)
 
             if os.path.exists(description_img):
-                p_img2 = doc.add_paragraph()
-                p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p_img2.add_run()
+                p_img4 = doc.add_paragraph()
+                p_img4.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p_img4.add_run()
                 run.add_picture(description_img, width=Pt(500))
-                set_tnr_12(p_img2)
+                set_tnr_12(p_img4)
 
             if os.path.exists(publish_date_img):
-                p_img3 = doc.add_paragraph()
-                p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p_img3.add_run()
+                p_img5 = doc.add_paragraph()
+                p_img5.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p_img5.add_run()
                 run.add_picture(publish_date_img, width=Pt(500))
-                set_tnr_12(p_img3)
+                set_tnr_12(p_img5)
         elif 'cian' in url:
             titul_with_price_history_img = os.path.join(screenshots_dir, "титул.png")
 
@@ -168,6 +176,7 @@ def build_word_with_screenshots(data_rows, output_path):
             if 'avito' in url:
                 price_history_img = os.path.join(screenshots_dir, "история цены.png")
                 description_img = os.path.join(screenshots_dir, 'описание.png')
+                address_img = os.path.join(screenshots_dir, "адрес.png")
                 publish_date_img = os.path.join(screenshots_dir, "дата_публикации.png")
                 titul_img = os.path.join(screenshots_dir, "титул.png")
 
@@ -179,6 +188,13 @@ def build_word_with_screenshots(data_rows, output_path):
                     run.add_picture(price_history_img, width=Pt(500))
                     set_tnr_12(p_img1)
 
+                if os.path.exists(address_img):
+                    p_img2 = doc.add_paragraph()
+                    p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p_img2.add_run()
+                    run.add_picture(address_img, width=Pt(500))
+                    set_tnr_12(p_img2)
+
                 if os.path.exists(titul_img):
                     p_img3 = doc.add_paragraph()
                     p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -187,18 +203,18 @@ def build_word_with_screenshots(data_rows, output_path):
                     set_tnr_12(p_img3)
 
                 if os.path.exists(description_img):
-                    p_img2 = doc.add_paragraph()
-                    p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = p_img2.add_run()
+                    p_img4 = doc.add_paragraph()
+                    p_img4.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p_img4.add_run()
                     run.add_picture(description_img, width=Pt(500))
-                    set_tnr_12(p_img2)
+                    set_tnr_12(p_img4)
 
                 if os.path.exists(publish_date_img):
-                    p_img3 = doc.add_paragraph()
-                    p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = p_img3.add_run()
+                    p_img5 = doc.add_paragraph()
+                    p_img5.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p_img5.add_run()
                     run.add_picture(publish_date_img, width=Pt(500))
-                    set_tnr_12(p_img3)
+                    set_tnr_12(p_img5)
             elif 'cian' in url:
                 titul_with_price_history_img = os.path.join(screenshots_dir, "титул.png")
 
