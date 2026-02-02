@@ -741,7 +741,7 @@ class CianParser:
                     return value / 100
                 elif "Цена за гектар" in title:
                     value = self._extract_num(value)
-                    return value * 10000
+                    return value / 10000
 
             return None
 
@@ -931,6 +931,14 @@ class CianParser:
                     break
                 except:
                     pass
+        if data["params"].get("Площади"):
+            try:
+                area_text = data["params"]['Площади']
+                area_value = self._extract_num(area_text.split('–')[0])
+                data["area_m2"] = area_value
+            except:
+                pass
+
 
         # Извлекаем этаж
         if data["params"].get("Этаж"):
