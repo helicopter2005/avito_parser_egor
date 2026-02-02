@@ -34,7 +34,7 @@ def resource_path(relative_path):
 class CianParser:
     """Парсер объявлений недвижимости Циан"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
+    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None, on_auth=None):
         self.download_images = download_images
         self.images_dir = Path(images_dir)
         self.driver = None
@@ -42,6 +42,7 @@ class CianParser:
         self.slow_mode = slow_mode
         self.slow_delay = 0.4
         self.on_captcha = on_captcha
+        self.on_auth = on_auth
         self._wait_for_user = False
         self.browser_type = None
 
@@ -838,7 +839,11 @@ class CianParser:
             self._wait_for_user = True
 
             if self.on_captcha:
-                self.on_captcha()
+                # ЗАМЕНЯЕМ НА:
+                if hasattr(self, 'on_auth') and self.on_auth:
+                    self.on_auth()
+                else:
+                    self.on_captcha()
 
             while self._wait_for_user:
                 time.sleep(0.3)
