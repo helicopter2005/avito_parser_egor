@@ -709,6 +709,10 @@ class CianParser:
             price_type = "м²/месяц"
         elif "год" in price_text:
             price_type = "год"
+            try:
+                price /= 12
+            except:
+                pass
 
         return price, price_type
 
