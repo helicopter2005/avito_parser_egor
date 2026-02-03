@@ -457,6 +457,25 @@ class AvitoApp(QWidget):
         os.makedirs(cache_dir, exist_ok=True)
         return cache_dir
 
+    def _get_cache_dir(self):
+        """Определение папки для хранения файла счетчика в системной директории"""
+        from pathlib import Path
+
+        # Получаем домашнюю директорию пользователя
+        home = Path.home()
+
+        # Определяем путь в зависимости от ОС
+        if sys.platform.startswith('win'):
+            # Windows: C:\Users\Username\AppData\Local\AvitoParser
+            cache_dir = home / "AppData" / "Local" / "ParserApp"
+        else:
+            cache_dir = home / "ParserApp"
+
+
+        # Создаем папку, если её нет
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return str(cache_dir)
+
     def _get_cache_file_path(self):
         """Получение полного пути к файлу кэша"""
         cache_dir = self._get_cache_dir()
