@@ -193,6 +193,19 @@ class AvitoParser:
 
         return False
 
+    def _get_main_container(self):
+        content_container = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "[data-marker*='title']"
+        )
+        # затем поднимаемся к родителю нужного уровня
+        content_container = self.driver.execute_script(
+            "return arguments[0].parentElement.parentElement.parentElement.parentElement.parentElement;",
+            content_container
+        )
+
+        return content_container
+
     def _get_price_history_and_screenshot(self, address_ad):
         """Получение истории цен + скриншот tooltip, обрезанный по контейнеру контента"""
         import time
@@ -222,18 +235,19 @@ class AvitoParser:
             except Exception:
                 continue
 
-        self.driver.execute_script(
-            """arguments[0].scrollIntoView({block: 'center'});
-            window.scrollBy(0, 20);""",
-            hover_element
-        )
+        try:
+            self.driver.execute_script(
+                """arguments[0].scrollIntoView({block: 'center'});
+                window.scrollBy(0, 20);""",
+                hover_element
+            )
+        except Exception as e:
+            print(str(e))
+
 
         try:
             driver = self.driver
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             try:
                 ads_selectors = [
@@ -350,10 +364,7 @@ class AvitoParser:
         try:
             driver = self.driver
 
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             try:
                 ads_selectors = [
@@ -422,8 +433,8 @@ class AvitoParser:
                 pass
 
             # Ищем блок с картой
-            map_element = driver.find_element(By.CSS_SELECTOR, "div[class*='item-view-map']")
-
+            map_element = driver.find_element(By.CSS_SELECTOR, "div[data-marker*='item-map-wrapper']").find_element(By.XPATH, "..")
+            print(map_element.text)
             # Прокручиваем к карте
             driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center'});",
@@ -432,10 +443,7 @@ class AvitoParser:
             time.sleep(0.3)
 
             # Получаем контейнер контента (для удаления рекламы)
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             # Удаляем рекламу
             try:
@@ -517,23 +525,21 @@ class AvitoParser:
             # ========================================
             # 1️⃣ Контейнер контента
             # ========================================
-            content_container = driver.find_element(
-                By.CSS_SELECTOR, "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             # ========================================
             # 2️⃣ Удаляем рекламу (если есть)
             # ========================================
             try:
-                ads = content_container.find_elements(
-                    By.CSS_SELECTOR, "div[class*='item-view-ads']"
-                )
-                for ad in ads:
-                    driver.execute_script("arguments[0].remove();", ad)
-
-                # Обновляем layout после удаления рекламы
-                driver.execute_script("window.dispatchEvent(new Event('resize'));")
-                time.sleep(0.3)
+                ads_selectors = [
+                    "div[class*='item-view-ads']",
+                    "div[class*='ads']",
+                    "div[data-marker*='ads']"
+                ]
+                for selector in ads_selectors:
+                    ads = content_container.find_elements(By.CSS_SELECTOR, selector)
+                    for ad in ads:
+                        driver.execute_script("arguments[0].remove();", ad)
             except Exception:
                 pass
 
@@ -543,7 +549,7 @@ class AvitoParser:
             try:
                 description = content_container.find_element(
                     By.XPATH,
-                    ".//*[contains(@id,'item-view-description') or contains(@class,'item-view-description')]"
+                    ".//*[contains(@id,'item-description') or contains(@class,'item-view-description')]"
                 )
                 driver.execute_script(
                     "arguments[0].scrollIntoView({block:'start'});",
