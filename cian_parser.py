@@ -957,11 +957,7 @@ class CianParser:
         for key in ["Площадь участка", "Участок"]:
             if data["params"].get(key):
                 try:
-                    if 'сот' in data["params"]["Площадь участка"]:
-                        data["params"]["Площадь участка"] = float(data["params"].get(key).replace("сот.", '').replace(',', '.').strip()) * 100
-                    elif 'га' in data["params"]["Площадь участка"]:
-                        data["params"]["Площадь участка"] = float(
-                            data["params"].get(key).replace("га", '').replace(',', '.').strip()) * 10000
+                    data["params"]["Площадь участка"] = float(data["params"].get(key).replace("сот.", '').replace(',', '.').strip()) * 100
                     break
                 except:
                     pass
