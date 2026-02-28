@@ -121,24 +121,34 @@ class AvitoParser:
             try:
 
                 elements = self.driver.find_elements(
-                                        By.CSS_SELECTOR,
-                                        '[class*="item-price"]'
-                                    )
-                for el in elements:
-                    text = el.text.strip()
-                    if 'История цены' in text:
-                        break
-                else:
+                    By.CSS_SELECTOR,
+                    'button[aria-label="История цены"]'
+                )
+
+                if not elements:
+                    elements = self.driver.find_elements(By.XPATH,
+                                                         "//*[contains(text(), 'История цены')]")
+                if not elements:
                     raise Exception("История цены не найдена")
-            except:
+            except Exception as e:
+                print(str(e))
                 break
 
             # Проверяем tooltip
             try:
                 from selenium.webdriver.common.action_chains import ActionChains
 
-                elements = self.driver.find_elements(By.XPATH,
-                                                     "//*[contains(text(), 'История цены')]")
+                try:
+                    elements = self.driver.find_elements(
+                        By.CSS_SELECTOR,
+                        'button[aria-label="История цены"]'
+                    )
+
+                    if not elements:
+                        elements = self.driver.find_elements(By.XPATH,
+                                                             "//*[contains(text(), 'История цены')]")
+                except Exception as e:
+                    print(str(e))
 
                 for el in elements:
                     try:
@@ -195,7 +205,14 @@ class AvitoParser:
         screenshot_path = None
 
         hover_element = None
-        elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'История цены')]")
+        elements = self.driver.find_elements(
+            By.CSS_SELECTOR,
+            'button[aria-label="История цены"]'
+        )
+
+        if not elements:
+            elements = self.driver.find_elements(By.XPATH,
+                                                 "//*[contains(text(), 'История цены')]")
 
         for el in elements:
             try:
