@@ -816,14 +816,7 @@ class AvitoParser:
             "h1"
         ])
 
-        price_text = self._extract_text([
-            "[data-marker='item-view/item-price']",
-            "[class*='style-price-value']",
-            "[class*='price-value']",
-            "[class*='item-price']",
-            "[itemprop='price']",
-            ".js-item-price"
-        ])
+        price_text = self.driver.find_element(By.CSS_SELECTOR, "[data-marker='item-view/item-price']").get_attribute("content")
 
         # Если основная цена не найдена, ищем по тексту с ₽
         if not price_text:
