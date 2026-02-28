@@ -434,7 +434,6 @@ class AvitoParser:
 
             # Ищем блок с картой
             map_element = driver.find_element(By.CSS_SELECTOR, "div[data-marker*='item-map-wrapper']").find_element(By.XPATH, "..")
-            print(map_element.text)
             # Прокручиваем к карте
             driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center'});",
@@ -748,6 +747,10 @@ class AvitoParser:
         except Exception:
             pass
 
+        except Exception as e:
+            print(f"  ✗ Ошибка парсинга цены: {e}")
+            return None, None
+
     def parse_ad(self, url):
         if not self.driver:
             self._setup_driver()
@@ -816,30 +819,15 @@ class AvitoParser:
             "h1"
         ])
 
-        price_text = self.driver.find_element(By.CSS_SELECTOR, "[data-marker='item-view/item-price']").get_attribute("content")
-
-        # Если основная цена не найдена, ищем по тексту с ₽
-        if not price_text:
-            try:
-                elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), '₽')]")
-                for el in elements:
-                    text = el.text.strip()
-                    # Ищем формат "XXX XXX ₽ в месяц"
-                    if '₽' in text and ('месяц' in text.lower() or 'год' in text.lower()):
-                        price_text = text
-                        break
-            except:
-                pass
+        price_text_el = self.driver.find_element(By.CSS_SELECTOR, "[id*='item-price-value']")
+        price_text = self.driver.execute_script("return arguments[0].innerText;", price_text_el).replace('\xa0', ' ').replace('\n', ' ').strip()
 
         data["price_text"] = price_text
         data["price"], data["price_type"] = self._parse_price(price_text)
 
         # Дополнительная инфо о цене (за м², залог)
-        price_info = self._extract_text([
-            "[class*='price-info']",
-            "[class*='price-sub']",
-            "[class*='style-price-sub']"
-        ])
+
+        price_info = None
         if not price_info:
             try:
                 # Ищем текст под ценой
@@ -922,14 +910,10 @@ class AvitoParser:
             "[class*='date-info']"
         ])
 
-        print(data["price_text"])
         # Если в объявлении указана только цена за м2 в месяц
-        if "в месяц за м²" in data["price_text"].split('\n')[:2]:
-            print(1)
+        if "в месяц за м²" in data["price_text"]:
             if area_match:
                 data["price"] = round(data["price"] * data["area_m2"], 1)
-            else:
-                data["price"] = "Введите стоимость аренды вручную"
 
         address_screenshot = self._take_address_screenshot(
             data['title'] + data['address'].replace("\n", " "))
@@ -945,6 +929,7 @@ class AvitoParser:
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")
 
+        print(data)
         return data
 
     def parse_multiple(self, urls):
