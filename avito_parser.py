@@ -728,8 +728,10 @@ class AvitoParser:
         match = re.search(r'([\d\s]+)\s*₽', price_info)
         if match:
             try:
-                if 'за сотку' in price_info or '':
+                if 'за сотку' in price_info:
                     return float(match.group(1).replace(" ", "")) / 100
+                if 'за гектар' in price_info:
+                    return float(match.group(1).replace(" ", "")) * 10000
                 if 'в год' in price_info:
                     return float(match.group(1).replace(" ", "")) / 12
                 return float(match.group(1).replace(" ", ""))
@@ -826,17 +828,27 @@ class AvitoParser:
         data["price"], data["price_type"] = self._parse_price(price_text)
 
         # Дополнительная инфо о цене (за м², залог)
+        # Вроде не работает
+        p = self.driver.execute_script("""
+            var container = arguments[0].closest('[data-marker="item-view/item-price-container"]');
+            var parent = container;
+            for (var i = 0; i < 5; i++) {
+                parent = parent.parentElement;
+                var p = parent.querySelector('p');
+                if (p) return p;
+            }
+            return null;
+        """, price_text_el)
 
+        if p:
+            price_info = self.driver.execute_script("return arguments[0].innerText;", p).replace('\xa0', ' ').strip()
         price_info = None
         if not price_info:
             try:
-                # Ищем текст под ценой
-                price_el = self.driver.find_element(By.XPATH, "//*[contains(text(), '₽ в месяц')]")
-                parent = price_el.find_element(By.XPATH, "./..")
-                siblings = parent.find_elements(By.XPATH, "./following-sibling::*")
-                for sib in siblings[:3]:
-                    text = sib.text.strip()
-                    if 'м²' in text or 'залог' in text.lower():
+                elements = self.driver.find_elements(By.CSS_SELECTOR, "p")
+                for el in elements:
+                    text = self.driver.execute_script("return arguments[0].innerText;", el).replace('\xa0', ' ').strip()
+                    if '₽' in text and any(x in text for x in ['м²', 'залог', 'сотку', 'в год', 'за гектар', 'за га']):
                         price_info = text
                         break
             except:
@@ -846,7 +858,6 @@ class AvitoParser:
         try:
             data["price_per_m2"] = self.extract_price_per_m2(data["price_info"])
         except:
-            data["price_per_m2"] = "Введите вручную"
             pass
 
 
@@ -898,6 +909,13 @@ class AvitoParser:
             elif 'га' in data["params"].get("Площадь"):
                 data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 10000
 
+        if not data.get("area_m2"):
+            sqr = data['params'].get("Площадь")
+            if 'га' in sqr:
+                data['area_m2'] = float(sqr.replace('га.', '').strip()) * 10000
+            if 'сот.' in sqr:
+                data['area_m2'] = float(sqr.replace('сот.', '').strip()) * 100
+
         data["seller_name"] = self._extract_text([
             "[data-marker='seller-info/name']",
             ".seller-info-name",
@@ -914,6 +932,8 @@ class AvitoParser:
         if "в месяц за м²" in data["price_text"]:
             if area_match:
                 data["price"] = round(data["price"] * data["area_m2"], 1)
+        if not data['price_per_m2'] and data.get('area_m2', False):
+            data["price_per_m2"] = int(data["price"] / data["area_m2"])
 
         address_screenshot = self._take_address_screenshot(
             data['title'] + data['address'].replace("\n", " "))
