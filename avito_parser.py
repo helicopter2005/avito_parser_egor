@@ -121,24 +121,34 @@ class AvitoParser:
             try:
 
                 elements = self.driver.find_elements(
-                                        By.CSS_SELECTOR,
-                                        '[class*="item-price"]'
-                                    )
-                for el in elements:
-                    text = el.text.strip()
-                    if 'История цены' in text:
-                        break
-                else:
+                    By.CSS_SELECTOR,
+                    'button[aria-label="История цены"]'
+                )
+
+                if not elements:
+                    elements = self.driver.find_elements(By.XPATH,
+                                                         "//*[contains(text(), 'История цены')]")
+                if not elements:
                     raise Exception("История цены не найдена")
-            except:
+            except Exception as e:
+                print(str(e))
                 break
 
             # Проверяем tooltip
             try:
                 from selenium.webdriver.common.action_chains import ActionChains
 
-                elements = self.driver.find_elements(By.XPATH,
-                                                     "//*[contains(text(), 'История цены')]")
+                try:
+                    elements = self.driver.find_elements(
+                        By.CSS_SELECTOR,
+                        'button[aria-label="История цены"]'
+                    )
+
+                    if not elements:
+                        elements = self.driver.find_elements(By.XPATH,
+                                                             "//*[contains(text(), 'История цены')]")
+                except Exception as e:
+                    print(str(e))
 
                 for el in elements:
                     try:
@@ -183,6 +193,19 @@ class AvitoParser:
 
         return False
 
+    def _get_main_container(self):
+        content_container = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "[data-marker*='title']"
+        )
+        # затем поднимаемся к родителю нужного уровня
+        content_container = self.driver.execute_script(
+            "return arguments[0].parentElement.parentElement.parentElement.parentElement.parentElement;",
+            content_container
+        )
+
+        return content_container
+
     def _get_price_history_and_screenshot(self, address_ad):
         """Получение истории цен + скриншот tooltip, обрезанный по контейнеру контента"""
         import time
@@ -195,7 +218,14 @@ class AvitoParser:
         screenshot_path = None
 
         hover_element = None
-        elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'История цены')]")
+        elements = self.driver.find_elements(
+            By.CSS_SELECTOR,
+            'button[aria-label="История цены"]'
+        )
+
+        if not elements:
+            elements = self.driver.find_elements(By.XPATH,
+                                                 "//*[contains(text(), 'История цены')]")
 
         for el in elements:
             try:
@@ -205,18 +235,19 @@ class AvitoParser:
             except Exception:
                 continue
 
-        self.driver.execute_script(
-            """arguments[0].scrollIntoView({block: 'center'});
-            window.scrollBy(0, 20);""",
-            hover_element
-        )
+        try:
+            self.driver.execute_script(
+                """arguments[0].scrollIntoView({block: 'center'});
+                window.scrollBy(0, 20);""",
+                hover_element
+            )
+        except Exception as e:
+            print(str(e))
+
 
         try:
             driver = self.driver
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             try:
                 ads_selectors = [
@@ -333,10 +364,7 @@ class AvitoParser:
         try:
             driver = self.driver
 
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             try:
                 ads_selectors = [
@@ -405,8 +433,7 @@ class AvitoParser:
                 pass
 
             # Ищем блок с картой
-            map_element = driver.find_element(By.CSS_SELECTOR, "div[class*='item-view-map']")
-
+            map_element = driver.find_element(By.CSS_SELECTOR, "div[data-marker*='item-map-wrapper']").find_element(By.XPATH, "..")
             # Прокручиваем к карте
             driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center'});",
@@ -415,10 +442,7 @@ class AvitoParser:
             time.sleep(0.3)
 
             # Получаем контейнер контента (для удаления рекламы)
-            content_container = driver.find_element(
-                By.CSS_SELECTOR,
-                "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             # Удаляем рекламу
             try:
@@ -500,23 +524,21 @@ class AvitoParser:
             # ========================================
             # 1️⃣ Контейнер контента
             # ========================================
-            content_container = driver.find_element(
-                By.CSS_SELECTOR, "div[class*='item-view-content']"
-            )
+            content_container = self._get_main_container()
 
             # ========================================
             # 2️⃣ Удаляем рекламу (если есть)
             # ========================================
             try:
-                ads = content_container.find_elements(
-                    By.CSS_SELECTOR, "div[class*='item-view-ads']"
-                )
-                for ad in ads:
-                    driver.execute_script("arguments[0].remove();", ad)
-
-                # Обновляем layout после удаления рекламы
-                driver.execute_script("window.dispatchEvent(new Event('resize'));")
-                time.sleep(0.3)
+                ads_selectors = [
+                    "div[class*='item-view-ads']",
+                    "div[class*='ads']",
+                    "div[data-marker*='ads']"
+                ]
+                for selector in ads_selectors:
+                    ads = content_container.find_elements(By.CSS_SELECTOR, selector)
+                    for ad in ads:
+                        driver.execute_script("arguments[0].remove();", ad)
             except Exception:
                 pass
 
@@ -526,7 +548,7 @@ class AvitoParser:
             try:
                 description = content_container.find_element(
                     By.XPATH,
-                    ".//*[contains(@id,'item-view-description') or contains(@class,'item-view-description')]"
+                    ".//*[contains(@id,'item-description') or contains(@class,'item-view-description')]"
                 )
                 driver.execute_script(
                     "arguments[0].scrollIntoView({block:'start'});",
@@ -706,8 +728,10 @@ class AvitoParser:
         match = re.search(r'([\d\s]+)\s*₽', price_info)
         if match:
             try:
-                if 'за сотку' in price_info or '':
+                if 'за сотку' in price_info:
                     return float(match.group(1).replace(" ", "")) / 100
+                if 'за гектар' in price_info:
+                    return float(match.group(1).replace(" ", "")) * 10000
                 if 'в год' in price_info:
                     return float(match.group(1).replace(" ", "")) / 12
                 return float(match.group(1).replace(" ", ""))
@@ -724,6 +748,10 @@ class AvitoParser:
             time.sleep(0.2)
         except Exception:
             pass
+
+        except Exception as e:
+            print(f"  ✗ Ошибка парсинга цены: {e}")
+            return None, None
 
     def parse_ad(self, url):
         if not self.driver:
@@ -793,46 +821,34 @@ class AvitoParser:
             "h1"
         ])
 
-        price_text = self._extract_text([
-            "[data-marker='item-view/item-price']",
-            "[class*='style-price-value']",
-            "[class*='price-value']",
-            "[class*='item-price']",
-            "[itemprop='price']",
-            ".js-item-price"
-        ])
-
-        # Если основная цена не найдена, ищем по тексту с ₽
-        if not price_text:
-            try:
-                elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), '₽')]")
-                for el in elements:
-                    text = el.text.strip()
-                    # Ищем формат "XXX XXX ₽ в месяц"
-                    if '₽' in text and ('месяц' in text.lower() or 'год' in text.lower()):
-                        price_text = text
-                        break
-            except:
-                pass
+        price_text_el = self.driver.find_element(By.CSS_SELECTOR, "[id*='item-price-value']")
+        price_text = self.driver.execute_script("return arguments[0].innerText;", price_text_el).replace('\xa0', ' ').replace('\n', ' ').strip()
 
         data["price_text"] = price_text
         data["price"], data["price_type"] = self._parse_price(price_text)
 
         # Дополнительная инфо о цене (за м², залог)
-        price_info = self._extract_text([
-            "[class*='price-info']",
-            "[class*='price-sub']",
-            "[class*='style-price-sub']"
-        ])
+        # Вроде не работает
+        p = self.driver.execute_script("""
+            var container = arguments[0].closest('[data-marker="item-view/item-price-container"]');
+            var parent = container;
+            for (var i = 0; i < 5; i++) {
+                parent = parent.parentElement;
+                var p = parent.querySelector('p');
+                if (p) return p;
+            }
+            return null;
+        """, price_text_el)
+
+        if p:
+            price_info = self.driver.execute_script("return arguments[0].innerText;", p).replace('\xa0', ' ').strip()
+        price_info = None
         if not price_info:
             try:
-                # Ищем текст под ценой
-                price_el = self.driver.find_element(By.XPATH, "//*[contains(text(), '₽ в месяц')]")
-                parent = price_el.find_element(By.XPATH, "./..")
-                siblings = parent.find_elements(By.XPATH, "./following-sibling::*")
-                for sib in siblings[:3]:
-                    text = sib.text.strip()
-                    if 'м²' in text or 'залог' in text.lower():
+                elements = self.driver.find_elements(By.CSS_SELECTOR, "p")
+                for el in elements:
+                    text = self.driver.execute_script("return arguments[0].innerText;", el).replace('\xa0', ' ').strip()
+                    if '₽' in text and any(x in text for x in ['м²', 'залог', 'сотку', 'в год', 'за гектар', 'за га']):
                         price_info = text
                         break
             except:
@@ -842,7 +858,6 @@ class AvitoParser:
         try:
             data["price_per_m2"] = self.extract_price_per_m2(data["price_info"])
         except:
-            data["price_per_m2"] = "Введите вручную"
             pass
 
 
@@ -894,6 +909,13 @@ class AvitoParser:
             elif 'га' in data["params"].get("Площадь"):
                 data["params"]["Площадь участка"] = float(data["params"]['Площадь'].replace('сот.', '').strip()) * 10000
 
+        if not data.get("area_m2"):
+            sqr = data['params'].get("Площадь")
+            if 'га' in sqr:
+                data['area_m2'] = float(sqr.replace('га.', '').strip()) * 10000
+            if 'сот.' in sqr:
+                data['area_m2'] = float(sqr.replace('сот.', '').strip()) * 100
+
         data["seller_name"] = self._extract_text([
             "[data-marker='seller-info/name']",
             ".seller-info-name",
@@ -906,14 +928,12 @@ class AvitoParser:
             "[class*='date-info']"
         ])
 
-        print(data["price_text"])
         # Если в объявлении указана только цена за м2 в месяц
-        if "в месяц за м²" in data["price_text"].split('\n')[:2]:
-            print(1)
+        if "в месяц за м²" in data["price_text"]:
             if area_match:
                 data["price"] = round(data["price"] * data["area_m2"], 1)
-            else:
-                data["price"] = "Введите стоимость аренды вручную"
+        if not data['price_per_m2'] and data.get('area_m2', False):
+            data["price_per_m2"] = int(data["price"] / data["area_m2"])
 
         address_screenshot = self._take_address_screenshot(
             data['title'] + data['address'].replace("\n", " "))
@@ -929,6 +949,7 @@ class AvitoParser:
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")
 
+        print(data)
         return data
 
     def parse_multiple(self, urls):
