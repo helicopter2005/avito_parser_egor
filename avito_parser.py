@@ -35,8 +35,9 @@ def resource_path(relative_path):
 class AvitoParser:
     """Парсер объявлений недвижимости Avito"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
-        self.download_images = download_images
+    def __init__(self, headless=False, download_screens=True, download_photos = False, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
+        self.download_screens = download_screens
+        self.download_photos = download_photos
         self.images_dir = Path(images_dir)
         self.driver = None
         self.headless = headless
@@ -46,7 +47,7 @@ class AvitoParser:
         self._wait_for_user = False
         self.browser_type = None
 
-        if download_images:
+        if download_screens:
             self.images_dir.mkdir(parents=True, exist_ok=True)
 
     def _setup_driver(self):
@@ -1048,11 +1049,12 @@ class AvitoParser:
         }
 
         # Загрузка фотографий из галереи
-        print("  Загрузка фотографий...")
-        downloaded_images = self._collect_and_download_images(
-            data['title'] + data['address'].replace("\n", " ")
-        )
-        data["images_count"] = len(downloaded_images)
+        if self.download_photos:
+            print("  Загрузка фотографий...")
+            downloaded_images = self._collect_and_download_images(
+                data['title'] + data['address'].replace("\n", " ")
+            )
+            data["images_count"] = len(downloaded_images)
 
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
