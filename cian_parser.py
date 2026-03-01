@@ -11,7 +11,8 @@ import sys
 import re
 import json
 import time
-import hashlib
+import asyncio
+import aiohttp
 from datetime import datetime
 from pathlib import Path
 from selenium import webdriver
@@ -19,7 +20,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
@@ -34,7 +34,7 @@ def resource_path(relative_path):
 class CianParser:
     """Парсер объявлений недвижимости Циан"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None, on_auth=None):
+    def __init__(self, headless=False, download_images=True, download_photos=False, images_dir="Скриншоты", slow_mode=False, on_captcha=None, on_auth=None):
         self.download_images = download_images
         self.images_dir = Path(images_dir)
         self.driver = None
@@ -45,6 +45,7 @@ class CianParser:
         self.on_auth = on_auth
         self._wait_for_user = False
         self.browser_type = None
+        self.download_photos = download_photos
 
         if download_images:
             self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -789,6 +790,65 @@ class CianParser:
 
         return params
 
+    @staticmethod
+    async def _download_image(session, url, path):
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    with open(path, 'wb') as f:
+                        f.write(data)
+                    return True
+        except Exception as e:
+            print(f"  ✗ Ошибка загрузки {url}: {e}")
+        return False
+
+    async def _download_all_images(self, image_urls, ad_folder):
+        downloaded = set()
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for i, url in enumerate(image_urls):
+                path = ad_folder / f"фото_{i + 1:03d}.jpg"
+                tasks.append(self._download_image(session, url, path))
+            results = await asyncio.gather(*tasks)
+            for url, ok in zip(image_urls, results):
+                if ok:
+                    downloaded.add(url)
+        print(f"  ✓ Загружено: {len(downloaded)}/{len(image_urls)}")
+        return downloaded
+
+    def _collect_and_download_images(self, address_ad):
+        """Собирает все src из галереи и скачивает асинхронно"""
+        ad_folder = self.images_dir / str(address_ad)
+        ad_folder.mkdir(parents=True, exist_ok=True)
+
+        image_urls = []
+
+        try:
+            gallery = self.driver.find_element(
+                By.CSS_SELECTOR, "div[data-name='GalleryInnerComponent']"
+            )
+            items = gallery.find_elements(By.TAG_NAME, "li")
+            for item in items:
+                try:
+                    img = item.find_element(By.TAG_NAME, "img")
+                    src = img.get_attribute("src")
+                    if src and src.startswith("http"):
+                        image_urls.append(src)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"  ✗ Ошибка получения галереи: {e}")
+            return set()
+
+        print(f"  ✓ Найдено изображений: {len(image_urls)}")
+
+        if not image_urls:
+            return set()
+
+        downloaded = asyncio.run(self._download_all_images(image_urls, ad_folder))
+        return downloaded
+
     def parse_ad(self, url):
         """Парсинг одного объявления"""
         if not self.driver:
@@ -918,6 +978,12 @@ class CianParser:
             "publication_date": date_screenshot,
             "description": description_screenshot
         }
+
+        # Загрузка фото
+        if self.download_photos:
+            print("  Загрузка фотографий...")
+            downloaded_images = self._collect_and_download_images(screenshot_id)
+            data["images_count"] = len(downloaded_images)
 
         # Описание
         data["description"] = self._extract_text([
