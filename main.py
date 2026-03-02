@@ -139,7 +139,7 @@ class ParserWorker(QThread):
 class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Парсер объявлений Авито (оценка)")
+        self.setWindowTitle("Парсер объявлений Avito\Cian")
         self.initUI()
         self.resize(900, 600)
 
@@ -227,7 +227,6 @@ class AvitoApp(QWidget):
     # ---------- UI helpers ----------
 
     def initUI(self):
-        self.setWindowTitle('Пример смены иконки')
         self.setGeometry(100, 100, 300, 200)
 
         self.setWindowIcon(QIcon('icon.ico'))
