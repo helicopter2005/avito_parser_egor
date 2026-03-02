@@ -357,8 +357,7 @@ class AvitoApp(QWidget):
 
         self.start_btn.setEnabled(False)
         self.log.setRowCount(0)
-
-        self.worker = ParserWorker(urls, self.parserAvito, self.parserCian)
+        self.worker = ParserWorker(urls, self.parserAvito, self.parserCian, self.save_photos)
         self.worker.log.connect(self.log_msg)
         self.worker.captcha_detected.connect(self.on_captcha)
         self.worker.auth_required.connect(self.on_auth)
