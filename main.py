@@ -140,7 +140,7 @@ class ParserWorker(QThread):
 class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Парсер объявлений Avito\Cian")
+        self.setWindowTitle("Парсер объявлений Avito и Cian")
         self.initUI()
         self.resize(900, 600)
 
