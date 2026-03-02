@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
     QLabel, QMessageBox, QHBoxLayout, QFileDialog,
     QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView, QMenuBar, QAction, QDialog, QDialogButtonBox
 )
+from PyQt5.QtGui import QIcon
 
 from selenium.common.exceptions import TimeoutException
 
@@ -139,6 +140,7 @@ class AvitoApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Парсер объявлений Авито (оценка)")
+        self.initUI()
         self.resize(900, 600)
 
         self.parsed_rows = []
@@ -223,6 +225,14 @@ class AvitoApp(QWidget):
             self.add_row()
 
     # ---------- UI helpers ----------
+
+    def initUI(self):
+        self.setWindowTitle('Пример смены иконки')
+        self.setGeometry(100, 100, 300, 200)
+
+        self.setWindowIcon(QIcon('icon.ico'))
+
+        self.show()
 
     def on_save_photos_toggled(self, checked):
         self.save_photos = checked
