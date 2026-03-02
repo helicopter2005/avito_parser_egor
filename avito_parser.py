@@ -14,6 +14,9 @@ import time
 import hashlib
 from datetime import datetime
 from pathlib import Path
+import asyncio
+import aiohttp
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -32,8 +35,9 @@ def resource_path(relative_path):
 class AvitoParser:
     """Парсер объявлений недвижимости Avito"""
 
-    def __init__(self, headless=False, download_images=True, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
-        self.download_images = download_images
+    def __init__(self, headless=False, download_screens=True, download_photos = False, images_dir="Скриншоты", slow_mode=False, on_captcha=None):
+        self.download_screens = download_screens
+        self.download_photos = download_photos
         self.images_dir = Path(images_dir)
         self.driver = None
         self.headless = headless
@@ -43,7 +47,7 @@ class AvitoParser:
         self._wait_for_user = False
         self.browser_type = None
 
-        if download_images:
+        if download_screens:
             self.images_dir.mkdir(parents=True, exist_ok=True)
 
     def _setup_driver(self):
@@ -752,6 +756,104 @@ class AvitoParser:
         except Exception as e:
             print(f"  ✗ Ошибка парсинга цены: {e}")
             return None, None
+    @staticmethod
+    async def _download_image(session, url, path):
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    with open(path, 'wb') as f:
+                        f.write(data)
+                    return True
+        except Exception as e:
+            print(f"  ✗ Ошибка загрузки {url}: {e}")
+        return False
+
+    async def _download_all_images(self, image_urls, ad_folder):
+        downloaded = set()
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for i, url in enumerate(image_urls):
+                path = ad_folder / f"фото_{i + 1:03d}.jpg"
+                tasks.append(self._download_image(session, url, path))
+            results = await asyncio.gather(*tasks)
+            for i, (url, ok) in enumerate(zip(image_urls, results)):
+                if ok:
+                    downloaded.add(url)
+                    print(f"  ✓ Фото {i + 1}: загружено")
+        return downloaded
+
+    def _collect_and_download_images(self, address_ad):
+        """Листает галерею, собирает src изображений, скачивает асинхронно"""
+        from selenium.webdriver.common.by import By
+        import time
+
+        ad_folder = self.images_dir / str(address_ad)
+        ad_folder.mkdir(parents=True, exist_ok=True)
+
+        image_urls = []
+        seen_urls = set()
+
+        # Получаем первое изображение
+        def get_current_src():
+            try:
+                wrapper = self.driver.find_element(
+                    By.CSS_SELECTOR, "div[data-marker='image-frame/image-wrapper']"
+                )
+                img = wrapper.find_element(By.TAG_NAME, "img")
+                src = img.get_attribute("src")
+                return self._convert_to_max_quality(src) if src else None
+            except Exception:
+                pass
+            try:
+                img = self.driver.find_element(
+                    By.CSS_SELECTOR, "#gallery-slider img"
+                )
+                src = img.get_attribute("src")
+                return self._convert_to_max_quality(src) if src else None
+            except Exception:
+                return None
+
+        # Листаем галерею
+        max_images = 50
+        no_new_count = 0
+
+        for _ in range(max_images):
+            src = get_current_src()
+            if src and src not in seen_urls:
+                seen_urls.add(src)
+                image_urls.append(src)
+                no_new_count = 0
+            else:
+                no_new_count += 1
+                if no_new_count >= 3:
+                    break  # Три подряд уже виденных — галерея прошла по кругу
+
+            # Нажимаем кнопку "следующее фото"
+            try:
+                try:
+                    btn = self.driver.find_element(
+                        By.CSS_SELECTOR, "div[data-marker='image-frame/right-button']"
+                    )
+                except Exception:
+                    btn = self.driver.find_element(
+                        By.CSS_SELECTOR, "#gallery-slider button span[aria-label='Вперёд']"
+                    )
+                    btn = self.driver.execute_script("return arguments[0].closest('button');", btn)
+                self.driver.execute_script("arguments[0].click();", btn)
+                time.sleep(0.3)
+            except Exception:
+                break
+
+        print(f"  ✓ Найдено изображений: {len(image_urls)}")
+
+        if not image_urls:
+            return set()
+
+        # Асинхронная загрузка
+        downloaded = asyncio.run(self._download_all_images(image_urls, ad_folder))
+        print(f"  ✓ Загружено: {len(downloaded)}/{len(image_urls)}")
+        return downloaded
 
     def parse_ad(self, url):
         if not self.driver:
@@ -945,6 +1047,15 @@ class AvitoParser:
             "bottom": bottom_screenshot,
             "address": address_screenshot
         }
+
+        # Загрузка фотографий из галереи
+        if self.download_photos:
+            print("  Загрузка фотографий...")
+            downloaded_images = self._collect_and_download_images(
+                data['title'] + data['address'].replace("\n", " ")
+            )
+            data["images_count"] = len(downloaded_images)
+
         print(f"  ✓ Заголовок: {data.get('title', 'Не найден')[:50]}...")
         print(f"  ✓ Цена: {data.get('price', 'Не найдена')}")
         print(f"  ✓ Изображений: {data.get('images_count', 0)}")

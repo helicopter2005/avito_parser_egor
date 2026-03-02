@@ -4,7 +4,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
     QLabel, QMessageBox, QHBoxLayout, QFileDialog,
-    QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView
+    QTableWidget, QTableWidgetItem, QCheckBox, QHeaderView, QMenuBar, QAction, QDialog, QDialogButtonBox
 )
 
 from selenium.common.exceptions import TimeoutException
@@ -30,11 +30,12 @@ class ParserWorker(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, urls, parserAvito=None, parserCian=None):
+    def __init__(self, urls, parserAvito=None, parserCian=None, download_photos=False):
         super().__init__()
         self.urls = urls
         self.parserAvito = parserAvito
         self.parserCian = parserCian
+        self.download_photos = download_photos
 
     def run(self):
         try:
@@ -77,6 +78,12 @@ class ParserWorker(QThread):
                         on_captcha=self.on_captcha,
                         on_auth=self.on_auth
                     )
+
+            if self.parserAvito:
+                self.parserAvito.download_photos = self.download_photos
+
+            if self.parserCian:
+                self.parserCian.download_photos = self.download_photos
 
             parsed_data = []
 
@@ -149,12 +156,29 @@ class AvitoApp(QWidget):
         self.trial_limit = 10
         self.parsed_count = self._load_parsed_count()
 
+        self.save_photos = False
+
+        menubar = QMenuBar(self)
+
+        # Меню Фото
+        photo_menu = menubar.addMenu("Фото")
+        self.save_photos_action = QAction("Сохранять фото", self, checkable=True)
+        self.save_photos_action.toggled.connect(self.on_save_photos_toggled)
+        photo_menu.addAction(self.save_photos_action)
+
+        # Меню Контакты
+        contacts_action = QAction("Контакты", self)
+        contacts_action.triggered.connect(self.show_contacts)
+        menubar.addAction(contacts_action)
+
         layout = QVBoxLayout(self)
 
         if self.is_trial:
             remaining = max(0, self.trial_limit - self.parsed_count)
             self.trial_label = QLabel(f"🔓Пробная версия: осталось {remaining} из {self.trial_limit} объявлений")
             layout.addWidget(self.trial_label)
+
+        layout.setMenuBar(menubar)
 
         # ---------- Таблица ссылок ----------
         self.table = QTableWidget(0, 2)
@@ -213,6 +237,21 @@ class AvitoApp(QWidget):
             self.add_row()
 
     # ---------- UI helpers ----------
+
+    def on_save_photos_toggled(self, checked):
+        self.save_photos = checked
+        self.log_msg(f"{'✓ Фото будут сохраняться' if checked else 'ℹ Сохранение фото отключено'}")
+
+    def show_contacts(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Контакты")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("gekk1337@gmail.com"))
+        btn = QDialogButtonBox(QDialogButtonBox.Ok)
+        btn.accepted.connect(dlg.accept)
+        lay.addWidget(btn)
+        dlg.exec_()
+
     def add_row(self):
         row = self.table.rowCount()
         self.table.insertRow(row)
@@ -364,6 +403,7 @@ class AvitoApp(QWidget):
     def on_finished(self, result):
         self.start_btn.setEnabled(True)
 
+        # Сохраняем парсеры из worker'а для переиспользования
         if self.worker:
             self.parserAvito = self.worker.parserAvito
             self.parserCian = self.worker.parserCian
