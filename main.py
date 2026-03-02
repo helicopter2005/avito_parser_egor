@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QMetaObject, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
@@ -226,10 +227,15 @@ class AvitoApp(QWidget):
 
     # ---------- UI helpers ----------
 
+    def resource_path(self, relative_path):
+        if hasattr(sys, "_MEIPASS"):
+            return os.path.join(sys._MEIPASS, relative_path)
+        return os.path.abspath(relative_path)
+
     def initUI(self):
         self.setGeometry(100, 100, 300, 200)
 
-        self.setWindowIcon(QIcon('icon.ico'))
+        self.setWindowIcon(QIcon(self.resource_path('icon.ico')))
 
         self.show()
 
