@@ -1062,8 +1062,7 @@ class AvitoParser:
             "address": address_screenshot
         }
 
-        if has_location_and_date:
-            data["screenshots"]["has_location_and_date"] = has_location_and_date
+        data["screenshots"]["has_location_and_date"] = has_location_and_date
 
         # Загрузка фотографий из галереи
         if self.download_photos:
