@@ -83,7 +83,7 @@ def build_word_with_screenshots(data_rows, output_path):
                 run.add_picture(titul_img, width=Pt(500))
                 set_tnr_12(p_img3)
 
-            if os.path.exists(address_img):
+            if os.path.exists(address_img) and not data["screenshots"]["has_location_and_date"]:
                 p_img2 = doc.add_paragraph()
                 p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = p_img2.add_run()
@@ -196,7 +196,7 @@ def build_word_with_screenshots(data_rows, output_path):
                     run.add_picture(titul_img, width=Pt(500))
                     set_tnr_12(p_img3)
 
-                if os.path.exists(address_img):
+                if os.path.exists(address_img) and not data["screenshots"]["has_location_and_date"]:
                     p_img2 = doc.add_paragraph()
                     p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = p_img2.add_run()
