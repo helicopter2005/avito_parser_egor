@@ -76,6 +76,13 @@ def build_word_with_screenshots(data_rows, output_path):
                 run.add_picture(price_history_img, width=Pt(500))
                 set_tnr_12(p_img1)
 
+            if os.path.exists(titul_img):
+                p_img3 = doc.add_paragraph()
+                p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p_img3.add_run()
+                run.add_picture(titul_img, width=Pt(500))
+                set_tnr_12(p_img3)
+
             if os.path.exists(address_img):
                 p_img2 = doc.add_paragraph()
                 p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -83,12 +90,6 @@ def build_word_with_screenshots(data_rows, output_path):
                 run.add_picture(address_img, width=Pt(500))
                 set_tnr_12(p_img2)
 
-            if os.path.exists(titul_img):
-                p_img3 = doc.add_paragraph()
-                p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p_img3.add_run()
-                run.add_picture(titul_img, width=Pt(500))
-                set_tnr_12(p_img3)
 
             if os.path.exists(description_img):
                 p_img4 = doc.add_paragraph()
@@ -188,19 +189,19 @@ def build_word_with_screenshots(data_rows, output_path):
                     run.add_picture(price_history_img, width=Pt(500))
                     set_tnr_12(p_img1)
 
-                if os.path.exists(address_img):
-                    p_img2 = doc.add_paragraph()
-                    p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = p_img2.add_run()
-                    run.add_picture(address_img, width=Pt(500))
-                    set_tnr_12(p_img2)
-
                 if os.path.exists(titul_img):
                     p_img3 = doc.add_paragraph()
                     p_img3.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = p_img3.add_run()
                     run.add_picture(titul_img, width=Pt(500))
                     set_tnr_12(p_img3)
+
+                if os.path.exists(address_img):
+                    p_img2 = doc.add_paragraph()
+                    p_img2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p_img2.add_run()
+                    run.add_picture(address_img, width=Pt(500))
+                    set_tnr_12(p_img2)
 
                 if os.path.exists(description_img):
                     p_img4 = doc.add_paragraph()
