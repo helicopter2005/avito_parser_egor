@@ -518,7 +518,7 @@ class AvitoParser:
         from PIL import Image
 
         screenshots = []
-
+        has_location_and_date = False
         try:
             ad_folder = self.images_dir / str(address_ad)
             ad_folder.mkdir(parents=True, exist_ok=True)
@@ -526,12 +526,12 @@ class AvitoParser:
             driver = self.driver
 
             # ========================================
-            # 1️⃣ Контейнер контента
+            # 1 Контейнер контента
             # ========================================
             content_container = self._get_main_container()
 
             # ========================================
-            # 2️⃣ Удаляем рекламу (если есть)
+            # 2 Удаляем рекламу (если есть)
             # ========================================
             try:
                 ads_selectors = [
@@ -547,7 +547,7 @@ class AvitoParser:
                 pass
 
             # ========================================
-            # 3️⃣ Скролл к описанию
+            # 3 Скролл к описанию
             # ========================================
             try:
                 description = content_container.find_element(
@@ -566,7 +566,7 @@ class AvitoParser:
             time.sleep(0.5)
 
             # ========================================
-            # 4️⃣ Скрин №1 — описание (через save+crop)
+            # 4 Скрин №1 — описание (через save+crop)
             # ========================================
             first_full_path = ad_folder / "_tmp_full.png"
             driver.save_screenshot(str(first_full_path))
@@ -597,7 +597,7 @@ class AvitoParser:
             first_full_path.unlink(missing_ok=True)
 
             # ========================================
-            # 5️⃣ Проверяем дату публикации
+            # 5 Проверяем дату публикации
             # ========================================
             try:
                 date_element = driver.find_element(
@@ -611,7 +611,21 @@ class AvitoParser:
                 date_visible = True  # даты нет — второй скрин не нужен
 
             # ========================================
-            # 6️⃣ Если дата не видна — второй скрин
+            # 5.1 Проверяем видимость h2 «Расположение» (скрин №1)
+            # ========================================
+            try:
+                location_h2 = driver.find_element(
+                    By.XPATH, "//h2[contains(text(), 'Расположение')]"
+                )
+                has_location_and_date = driver.execute_script("""
+                    var r = arguments[0].getBoundingClientRect();
+                    return r.top >= 0 && r.bottom <= window.innerHeight;
+                """, location_h2)
+            except NoSuchElementException:
+                has_location_and_date = False
+
+            # ========================================
+            # 6 Если дата не видна — второй скрин
             # ========================================
             if not date_visible:
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -645,11 +659,11 @@ class AvitoParser:
                 screenshots.append(str(second_cropped_path))
                 second_full_path.unlink(missing_ok=True)
 
-            return screenshots
+            return screenshots, has_location_and_date
 
         except Exception as e:
             print(f"✗ Ошибка _take_bottom_screenshot: {e}")
-            return screenshots
+            return screenshots, has_location_and_date
 
     def continue_after_captcha(self):
         self._wait_for_user = False
@@ -1040,13 +1054,15 @@ class AvitoParser:
         address_screenshot = self._take_address_screenshot(
             data['title'] + data['address'].replace("\n", " "))
 
-        bottom_screenshot = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
+        bottom_screenshot, has_location_and_date = self._take_bottom_screenshot(data['title'] + data['address'].replace("\n", " "))
 
         data["screenshots"] = {
             "top": top_screenshot,
             "bottom": bottom_screenshot,
             "address": address_screenshot
         }
+
+        data["screenshots"]["has_location_and_date"] = has_location_and_date
 
         # Загрузка фотографий из галереи
         if self.download_photos:
